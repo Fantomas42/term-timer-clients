@@ -1,0 +1,97 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "term-timer-clients"
+dynamic = ["version"]
+description = "Clients of the Term Timer event stream"
+readme = "README.md"
+requires-python = ">=3.12"
+license = "GPL-3.0-or-later"
+license-files = ["LICENSE"]
+keywords = ["rubick", "cube", "speedcubing", "viewer", "zeromq"]
+authors = [{name = "Fantomas42", email = "fantomas42@gmail.com"}]
+classifiers = [
+  "Programming Language :: Python"
+]
+dependencies = [
+    "cubing_algs[opengl]>=1.0.20",
+    "pyzmq>=27.0"
+]
+
+[project.urls]
+repository = "https://github.com/Fantomas42/term-timer-clients"
+
+[project.optional-dependencies]
+dev = [
+    "ruff",
+    "mypy",
+    "pytest",
+    "pytest-cov",
+    "pytest-subtests",
+]
+
+[project.scripts]
+cube-view = "term_timer_clients.viewer.main:main"
+
+[tool.setuptools.packages.find]
+include = ["term_timer_clients*"]
+
+[tool.setuptools.dynamic]
+version = {attr = "term_timer_clients.__version__"}
+
+[tool.setuptools.package-data]
+term_timer_clients = ["tests/replays/*/*.json"]
+
+[tool.ruff]
+line-length = 80
+indent-width = 4
+target-version = "py312"
+show-fixes = true
+
+[tool.ruff.lint]
+preview = true
+fixable = ["ALL"]
+select = ["ALL"]
+ignore = [
+    "PT009",
+    "PT027",
+    "CPY001",
+    "D203",
+    "D205",
+    "D212",
+    "RUF067",
+    "TD003",
+]
+
+[tool.ruff.format]
+quote-style = "single"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"
+docstring-code-format = false
+docstring-code-line-length = "dynamic"
+
+[tool.ruff.lint.flake8-quotes]
+docstring-quotes = "double"
+inline-quotes = "single"
+
+[tool.ruff.lint.isort]
+force-single-line = true
+
+[tool.ruff.lint.pylint]
+allow-magic-value-types = ["str", "int"]
+
+[tool.mypy]
+disable_error_code = ["import-untyped"]
+python_version = 3.12
+
+[tool.coverage.run]
+branch = true
+omit = [
+  "term_timer_clients/tests/*",
+]
+
+[tool.coverage.report]
+show_missing = true
