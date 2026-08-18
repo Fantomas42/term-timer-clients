@@ -33,7 +33,7 @@ dev = [
 ]
 
 [project.scripts]
-cube-view = "term_timer_clients.viewer.main:main"
+cube-cast = "term_timer_clients.viewer.main:main"
 
 [tool.setuptools.packages.find]
 include = ["term_timer_clients*"]

@@ -13,7 +13,7 @@ between the two is [PROTOCOL.md](PROTOCOL.md), version 1.
 
 Living here today:
 
-- **`cube-view`**, a 3D view of the cube, turning and animating in real
+- **`cubecast`**, a 3D view of the cube, turning and animating in real
   time in a window of its own.
 
 ## Installation
@@ -27,7 +27,7 @@ which come with it.
 
 [ca]: https://github.com/Fantomas42/cubing-algs
 
-## cube-view
+## cubecast
 
 Publishing is off by default in term-timer. Turn it on for a session,
 with the `[publisher]` section of its configuration file filled in:
@@ -41,7 +41,7 @@ endpoints = ["ipc://~/.term_timer/cube.ipc"]
 Then, in a terminal of its own, connect a window to it:
 
 ```bash
-cube-view -e ipc://~/.term_timer/cube.ipc
+cubecast -e ipc://~/.term_timer/cube.ipc
 ```
 
 Any command that talks to a cube feeds it — `solve`, `train`, `ghost`,
@@ -55,8 +55,8 @@ one, and gets it right at the first state the cube reports — a single
 move is enough.
 
 ```
-Usage: cube-view [-h] -e ENDPOINT [-o ORIENTATION] [-p PALETTE] [-m MODE]
-                 [-w WIDTHxHEIGHT] [-t] [--no-msaa]
+Usage: cubecast [-h] -e ENDPOINT [-o ORIENTATION] [-p PALETTE] [-m MODE]
+                [-w WIDTHxHEIGHT] [-t] [--no-msaa]
 
 Watch a cube in 3D, from the term-timer event stream.
 

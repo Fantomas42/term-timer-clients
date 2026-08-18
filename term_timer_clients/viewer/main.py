@@ -1,4 +1,4 @@
-"""Entry point of the ``cube-view`` client."""
+"""Entry point of the ``cubecast`` client."""
 import logging
 import sys
 from argparse import ArgumentTypeError
@@ -16,8 +16,8 @@ from cubing_algs.vcube import VCube
 from term_timer_clients.argparser import ArgumentParser
 from term_timer_clients.protocol import EventStream
 from term_timer_clients.protocol import parse_endpoint
-from term_timer_clients.viewer.client import CubeView
-from term_timer_clients.viewer.host import CubeViewHost
+from term_timer_clients.viewer.client import CubeCast
+from term_timer_clients.viewer.host import CubeCastHost
 
 logger = logging.getLogger(__name__)
 
@@ -100,7 +100,7 @@ def build_parser() -> ArgumentParser:
     Describe what the client takes on its command line.
 
     Returns:
-        The parser of the ``cube-view`` arguments.
+        The parser of the ``cubecast`` arguments.
 
     """
     parser = ArgumentParser(
@@ -180,7 +180,7 @@ def build_parser() -> ArgumentParser:
     return parser
 
 
-def build_host(options: Namespace) -> CubeViewHost:
+def build_host(options: Namespace) -> CubeCastHost:
     """
     Assemble the window, the viewer and what translates the stream.
 
@@ -206,9 +206,9 @@ def build_host(options: Namespace) -> CubeViewHost:
         orientation=tracker,
     )
 
-    view = CubeView(viewer, tracker, options.orientation)
+    view = CubeCast(viewer, tracker, options.orientation)
 
-    return CubeViewHost(
+    return CubeCastHost(
         viewer=viewer,
         title=view.title,
         view=view,

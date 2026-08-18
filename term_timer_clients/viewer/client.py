@@ -22,12 +22,12 @@ logger = logging.getLogger(__name__)
 
 # Title of a window that has heard nothing yet, and the pieces the rest
 # of it is assembled from as the cube introduces itself
-WINDOW_TITLE = 'Cube View'
+WINDOW_TITLE = 'Cubecast'
 WINDOW_SEPARATOR = ' · '
 WINDOW_OFFLINE = 'offline'
 
 
-class CubeView:
+class CubeCast:
     """
     What the event stream does to the viewer, topic by topic.
 

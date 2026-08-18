@@ -1,5 +1,5 @@
 """
-Tests for the ``cube-view`` client.
+Tests for the ``cubecast`` client.
 
 Nothing here opens a window: the client only translates a stream into
 calls on a viewer, so a mocked one - or a real one, which needs no GPU
@@ -27,9 +27,9 @@ from term_timer_clients.tests.fixtures import envelope
 from term_timer_clients.viewer import host as window
 from term_timer_clients.viewer import main as entry
 from term_timer_clients.viewer.client import WINDOW_TITLE
-from term_timer_clients.viewer.client import CubeView
+from term_timer_clients.viewer.client import CubeCast
 from term_timer_clients.viewer.host import TRANSPARENT
-from term_timer_clients.viewer.host import CubeViewHost
+from term_timer_clients.viewer.host import CubeCastHost
 
 REPLAYS = Path(__file__).parent / 'replays' / 'gan_gen2'
 
@@ -93,7 +93,7 @@ def capture(name: str) -> list[dict[str, Any]]:
     return events
 
 
-def replay(view: CubeView, name: str) -> None:
+def replay(view: CubeCast, name: str) -> None:
     """
     Play a capture through the client, event by event.
 
@@ -132,7 +132,7 @@ def run_main(host: MagicMock, stream: MagicMock) -> int:
         The exit code of the entry point.
 
     """
-    argv = ['cube-view', '-e', ENDPOINT]
+    argv = ['cubecast', '-e', ENDPOINT]
 
     with (
         patch.object(sys, 'argv', argv),
@@ -150,7 +150,7 @@ class ClientTestCase(unittest.TestCase):
         self.viewer = create_autospec(Viewer, instance=True)
         self.viewer.cube = VCube()
         self.tracker = OrientationTracker(basis=SENSOR_BASIS)
-        self.view = CubeView(self.viewer, self.tracker)
+        self.view = CubeCast(self.viewer, self.tracker)
 
 
 class EnvelopeTestCase(ClientTestCase):
@@ -224,7 +224,7 @@ class CubeStateTestCase(ClientTestCase):
 
     def test_facelets_are_oriented(self) -> None:
         """A described state is turned the way the cube is looked at."""
-        view = CubeView(self.viewer, self.tracker, 'DF')
+        view = CubeCast(self.viewer, self.tracker, 'DF')
         cube = VCube()
         cube.rotate("R U R' U'")
 
@@ -274,7 +274,7 @@ class CubeMoveTestCase(ClientTestCase):
 
     def test_move_is_read_in_the_display_frame(self) -> None:
         """A move is turned the way the cube is looked at."""
-        view = CubeView(self.viewer, self.tracker, 'DF')
+        view = CubeCast(self.viewer, self.tracker, 'DF')
 
         view.dispatch(envelope('cube.move', {'move': 'L'}))
 
@@ -289,7 +289,7 @@ class CubeMoveTestCase(ClientTestCase):
 
     def test_untranslatable_move_is_pushed_as_it_is(self) -> None:
         """A notation nothing can read is handed over untouched."""
-        view = CubeView(self.viewer, self.tracker, 'DF')
+        view = CubeCast(self.viewer, self.tracker, 'DF')
 
         view.dispatch(envelope('cube.move', {'move': '[R,'}))
 
@@ -319,7 +319,7 @@ class CubeSensorTestCase(ClientTestCase):
 
     def test_gyro_without_tracker_is_ignored(self) -> None:
         """A client with no tracker simply drops the quaternions."""
-        view = CubeView(self.viewer)
+        view = CubeCast(self.viewer)
 
         view.dispatch(
             envelope(
@@ -367,7 +367,7 @@ class CaptureTestCase(unittest.TestCase):
     """The client fed by real captures, into a real viewer."""
 
     @staticmethod
-    def build(orientation: str = '') -> tuple[Viewer, CubeView]:
+    def build(orientation: str = '') -> tuple[Viewer, CubeCast]:
         """
         Wire a real viewer, which needs no GPU until it is attached.
 
@@ -381,7 +381,7 @@ class CaptureTestCase(unittest.TestCase):
         tracker = OrientationTracker(basis=SENSOR_BASIS)
         viewer = Viewer(cube=VCube(), orientation=tracker)
 
-        return viewer, CubeView(viewer, tracker, orientation)
+        return viewer, CubeCast(viewer, tracker, orientation)
 
     def test_sexy_move_upright(self) -> None:
         """A sexy move done upright is played as a sexy move."""
@@ -426,15 +426,15 @@ class CaptureTestCase(unittest.TestCase):
         self.assertIsNotNone(view.tracker.reference)  # type: ignore[union-attr]
 
 
-class CubeViewHostTestCase(unittest.TestCase):
+class CubeCastHostTestCase(unittest.TestCase):
     """The window, and the title the stream writes in it."""
 
     def setUp(self) -> None:
         """Wire a host on a mocked viewer and a client."""
         self.viewer = create_autospec(Viewer, instance=True)
         self.viewer.cube = VCube()
-        self.view = CubeView(self.viewer)
-        self.host = CubeViewHost(
+        self.view = CubeCast(self.viewer)
+        self.host = CubeCastHost(
             viewer=self.viewer, title=self.view.title, view=self.view,
         )
 
@@ -522,7 +522,7 @@ class CubeViewHostTestCase(unittest.TestCase):
         self.assertIn('Esc, Q', self.host.shortcuts)
 
 
-class CubeViewHostWindowCase(unittest.TestCase):
+class CubeCastHostWindowCase(unittest.TestCase):
     """What every test of the window is wired on, and no test."""
 
     def setUp(self) -> None:
@@ -530,15 +530,15 @@ class CubeViewHostWindowCase(unittest.TestCase):
         self.viewer = create_autospec(Viewer, instance=True)
         self.viewer.cube = VCube()
         self.viewer.look = Look()
-        self.view = CubeView(self.viewer)
-        self.host = CubeViewHost(
+        self.view = CubeCast(self.viewer)
+        self.host = CubeCastHost(
             viewer=self.viewer,
             title=self.view.title,
             view=self.view,
             transparent=True,
         )
 
-    def opaque_host(self) -> CubeViewHost:
+    def opaque_host(self) -> CubeCastHost:
         """
         Build the same host, on a window of the ordinary kind.
 
@@ -546,12 +546,12 @@ class CubeViewHostWindowCase(unittest.TestCase):
             A host drawing into a decorated, opaque window.
 
         """
-        return CubeViewHost(
+        return CubeCastHost(
             viewer=self.viewer, title=self.view.title, view=self.view,
         )
 
 
-class CubeViewHostTransparentTestCase(CubeViewHostWindowCase):
+class CubeCastHostTransparentTestCase(CubeCastHostWindowCase):
     """The cube laid on the desktop, and what it is drawn through."""
 
     def test_window_is_asked_to_let_the_desktop_through(self) -> None:
@@ -704,7 +704,7 @@ class CubeViewHostTransparentTestCase(CubeViewHostWindowCase):
         self.assertIsNone(self.host.target)
 
 
-class CubeViewHostMouseTestCase(CubeViewHostWindowCase):
+class CubeCastHostMouseTestCase(CubeCastHostWindowCase):
     """What the mouse does, and what it does the same in both modes."""
 
     def test_the_mouse_reads_the_same_in_both_modes(self) -> None:
@@ -801,7 +801,7 @@ class CubeViewHostMouseTestCase(CubeViewHostWindowCase):
         glfw.set_window_pos.assert_not_called()
 
 
-class CubeViewHostAliasedTestCase(unittest.TestCase):
+class CubeCastHostAliasedTestCase(unittest.TestCase):
     """A cube drawn into the window itself, antialiasing dropped."""
 
     def setUp(self) -> None:
@@ -809,9 +809,9 @@ class CubeViewHostAliasedTestCase(unittest.TestCase):
         self.viewer = create_autospec(Viewer, instance=True)
         self.viewer.cube = VCube()
         self.viewer.look = Look()
-        self.view = CubeView(self.viewer)
+        self.view = CubeCast(self.viewer)
 
-    def build_host(self, *, transparent: bool, msaa: bool) -> CubeViewHost:
+    def build_host(self, *, transparent: bool, msaa: bool) -> CubeCastHost:
         """
         Build a host of either window, antialiased or not.
 
@@ -823,7 +823,7 @@ class CubeViewHostAliasedTestCase(unittest.TestCase):
             The host, on the mocked viewer of this case.
 
         """
-        return CubeViewHost(
+        return CubeCastHost(
             viewer=self.viewer,
             title=self.view.title,
             view=self.view,
@@ -831,7 +831,7 @@ class CubeViewHostAliasedTestCase(unittest.TestCase):
             msaa=msaa,
         )
 
-    def opened_samples(self, host: CubeViewHost) -> list[int]:
+    def opened_samples(self, host: CubeCastHost) -> list[int]:
         """
         Read the samples the window was asked for as it opened.
 

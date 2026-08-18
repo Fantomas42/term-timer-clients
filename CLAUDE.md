@@ -47,12 +47,12 @@ Three layers, and the boundaries between them are the point:
   about cubes: frames in, envelopes out. Shared by every client.
   The subscriber *connects* and the publisher *binds*, which is what
   makes start order irrelevant and lets a client come and go.
-- **`viewer/client.py`** — `CubeView`, the whole of `cube-view`, and it
+- **`viewer/client.py`** — `CubeCast`, the whole of `cubecast`, and it
   touches neither a socket nor a window. An envelope comes in and a
   viewer method is called: topics are dispatched through a
   `self.handlers` dict. This is where a new topic is handled.
 - **`viewer/main.py` / `viewer/host.py`** — the entry point assembles
-  window, viewer and stream; `CubeViewHost` extends the cubing-algs
+  window, viewer and stream; `CubeCastHost` extends the cubing-algs
   `GlfwHost` with a window title, and takes the keyboard moves back
   off. The stream is the only thing entitled to turn this cube: a face
   played from the keyboard — or a `Backspace` putting the cube back
@@ -93,10 +93,10 @@ The threading split is deliberate and constrains where things may be
 done: the stream thread pushes moves the moment they arrive (the
 animation reads its cadence from that), while glfw demands its window
 be handled from the thread that opened it. So the stream only ever
-mutates state — `CubeView.title` — and the window picks it up at the
+mutates state — `CubeCast.title` — and the window picks it up at the
 next `frame()`.
 
-`sid` changing means the publisher restarted: `CubeView.restart()`
+`sid` changing means the publisher restarted: `CubeCast.restart()`
 throws away the cube, the tracker and the title rather than showing a
 new session through the drift of the old one.
 
@@ -104,7 +104,7 @@ Rotations are derived downstream of the drivers and are **not** in the
 `cube.*` plane: a client orients from the raw `cube.gyro` quaternion.
 Applying both would turn the cube twice. Likewise, when a display
 orientation is configured, moves arrive in the hardware frame and must
-go through `CubeView.translate()` before being pushed.
+go through `CubeCast.translate()` before being pushed.
 
 ## Adding a client
 

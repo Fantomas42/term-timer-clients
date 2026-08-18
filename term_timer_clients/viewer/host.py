@@ -10,7 +10,7 @@ from cubing_algs.display.gl.context import has_glfw
 from cubing_algs.display.gl.host import GlfwHost
 from cubing_algs.display.gl.renderer import OffscreenTarget
 
-from term_timer_clients.viewer.client import CubeView
+from term_timer_clients.viewer.client import CubeCast
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +35,7 @@ WINDOW_SHORTCUTS = """\
 # ships names the keys turning the cube, and a cube turned elsewhere
 # has none of them: what is left is what only looks at it.
 VIEWER_SHORTCUTS = f"""\
-cube-view
+cubecast
   Drag             Orbit the cube
   Ctrl drag        Carry the window across the screen
 { WINDOW_SHORTCUTS }"""
@@ -51,7 +51,7 @@ TRANSPARENCY_REFUSED = (
 
 
 @dataclass
-class CubeViewHost(GlfwHost):
+class CubeCastHost(GlfwHost):
     """
     The glfw host of cubing-algs, titled by the stream it listens to.
 
@@ -83,7 +83,7 @@ class CubeViewHost(GlfwHost):
     nothing in between.
     """
 
-    view: CubeView = field(kw_only=True)
+    view: CubeCast = field(kw_only=True)
     transparent: bool = False
     msaa: bool = True
 
