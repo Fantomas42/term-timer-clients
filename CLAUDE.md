@@ -51,6 +51,29 @@ Three layers, and the boundaries between them are the point:
   touches neither a socket nor a window. An envelope comes in and a
   viewer method is called: topics are dispatched through a
   `self.handlers` dict. This is where a new topic is handled.
+- **`viewer/assembly.py`** — the pieces of the cube gathering around
+  the ball core, and falling back to the floor when the link drops.
+  Pure: a scene comes in, a scene comes out, its pieces moved, and it
+  is layered on the seam `Viewer` documents for an effect —
+  `CubeCastHost.frame()` takes `advance()` and `draw()` apart and
+  describes the picture rather than writing into the viewer, so
+  nothing leaks into the camera the mouse writes to. A cube nobody is
+  connected to is handed over with no instance at all: the core is
+  drawn before them and on its own, so it is what stays in the window.
+  **The floor is the floor of the screen**: the shader draws a piece
+  at `world * model`, so a drop written into the model alone would
+  fall towards the D face — it is framed by the orientation and undone
+  by its conjugate instead. `CubeCast.present` is what moves it, and
+  it takes both halves: a link that is up, and a cube that has said
+  what it looks like. Assembling on the link alone would gather a
+  solved cube and repaint it in mid air. The core is painted for the
+  same progress: grey while nothing is connected, its blue green back
+  once the cube is whole — the one thing left in the window has to say
+  for itself whether there is a cube behind it. It travels through
+  `look.core_color`, which the `look=` of `Viewer.draw()` carries and
+  which **cubing-algs holds since the `Look` field of the same name**:
+  the `>=` of `pyproject.toml` is what says so, and it has to name the
+  release that added it.
 - **`viewer/main.py` / `viewer/host.py`** — the entry point assembles
   window, viewer and stream; `CubeCastHost` extends the cubing-algs
   `GlfwHost` with a window title, and takes the keyboard moves back
@@ -95,6 +118,12 @@ animation reads its cadence from that), while glfw demands its window
 be handled from the thread that opened it. So the stream only ever
 mutates state — `CubeCast.title` — and the window picks it up at the
 next `frame()`.
+
+A cube **announces its departure and never its arrival** — `cube.link`
+is published by term-timer rather than by a driver — and a client
+opened in the middle of a session has heard neither. So the cube
+talking at all is what says it is there, and `cube.link` is the only
+topic that ever says it is gone.
 
 `sid` changing means the publisher restarted: `CubeCast.restart()`
 throws away the cube, the tracker and the title rather than showing a

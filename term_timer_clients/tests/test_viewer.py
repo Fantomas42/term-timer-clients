@@ -7,8 +7,10 @@ until a stage is attached to it - is enough. The captures of
 ``tests/replays/gan_gen2/`` play the part of the cube.
 """
 import json
+import math
 import sys
 import unittest
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock
@@ -19,13 +21,28 @@ from cubing_algs.display.gl import SENSOR_BASIS
 from cubing_algs.display.gl import Look
 from cubing_algs.display.gl import OrientationTracker
 from cubing_algs.display.gl import Viewer
+from cubing_algs.display.gl.constants import CORE_COLOR
+from cubing_algs.display.gl.constants import DEFAULT_LOOK
 from cubing_algs.display.gl.context import GLContextError
 from cubing_algs.display.gl.host import GlfwHost
+from cubing_algs.display.gl.scene import CubieInstance
+from cubing_algs.display.gl.scene import Scene
+from cubing_algs.display.gl.transforms import IDENTITY
+from cubing_algs.display.gl.transforms import ORIGIN
+from cubing_algs.display.gl.transforms import Quat
+from cubing_algs.display.gl.transforms import Vec3
 from cubing_algs.vcube import VCube
 
 from term_timer_clients.tests.fixtures import envelope
 from term_timer_clients.viewer import host as window
 from term_timer_clients.viewer import main as entry
+from term_timer_clients.viewer.assembly import DORMANT_CORE
+from term_timer_clients.viewer.assembly import FALL_DURATION
+from term_timer_clients.viewer.assembly import MAGNET_DURATION
+from term_timer_clients.viewer.assembly import STAGGER
+from term_timer_clients.viewer.assembly import Assembly
+from term_timer_clients.viewer.assembly import Flight
+from term_timer_clients.viewer.assembly import tumble_axis
 from term_timer_clients.viewer.client import WINDOW_TITLE
 from term_timer_clients.viewer.client import CubeCast
 from term_timer_clients.viewer.host import TRANSPARENT
@@ -34,6 +51,10 @@ from term_timer_clients.viewer.host import CubeCastHost
 REPLAYS = Path(__file__).parent / 'replays' / 'gan_gen2'
 
 ENDPOINT = 'tcp://127.0.0.1:5333'
+
+# A cube describing itself, which is what a client waits for before it
+# shows one at all
+FACELETS = VCube().state
 
 # The glfw code of backspace, glfw never being imported here
 BACKSPACE = 259
@@ -118,6 +139,21 @@ def replay(view: CubeCast, name: str) -> None:
                 },
             ),
         )
+
+
+def solved_scene() -> Scene:
+    """
+    Build the scene of a solved cube, without a GPU anywhere near it.
+
+    A viewer builds its geometry and its scene when it is created, and
+    only asks for a context once a stage is attached to it: what comes
+    out of here is the very picture a window would be handed.
+
+    Returns:
+        The scene of a solved 3x3x3.
+
+    """
+    return Viewer(cube=VCube()).scene
 
 
 def run_main(host: MagicMock, stream: MagicMock) -> int:
@@ -330,10 +366,12 @@ class CubeSensorTestCase(ClientTestCase):
 
         self.assertIsNone(view.tracker)
 
+    def test_title_opens_offline(self) -> None:
+        """A stream that has said nothing yet has no cube behind it."""
+        self.assertEqual(self.view.title, f'{ WINDOW_TITLE } · offline')
+
     def test_title_names_the_cube(self) -> None:
         """The hardware and the battery are written in the title."""
-        self.assertEqual(self.view.title, WINDOW_TITLE)
-
         self.view.dispatch(
             envelope('cube.hardware', {'hardware_name': 'GANi3'}),
         )
@@ -361,6 +399,255 @@ class CubeSensorTestCase(ClientTestCase):
         self.view.dispatch(envelope('cube.battery', {'level': 'high'}))
 
         self.assertEqual(self.view.title, WINDOW_TITLE)
+
+
+class CubeLinkTestCase(ClientTestCase):
+    """Whether there is a cube to show at all, and what it looks like."""
+
+    def test_a_stream_that_said_nothing_has_no_cube(self) -> None:
+        """A client that has heard nothing yet shows nothing."""
+        self.assertFalse(self.view.present)
+
+    def test_a_link_alone_shows_no_cube(self) -> None:
+        """A cube that has not described itself is not shown."""
+        self.view.dispatch(
+            envelope('cube.link', {'connected': True, 'reason': 'opened'}),
+        )
+
+        self.assertFalse(self.view.present)
+
+    def test_a_described_cube_is_shown(self) -> None:
+        """A cube that said what it looks like is a cube to show."""
+        self.view.dispatch(
+            envelope('cube.link', {'connected': True, 'reason': 'opened'}),
+        )
+        self.view.dispatch(envelope('cube.facelets', {'facelets': FACELETS}))
+
+        self.assertTrue(self.view.present)
+
+    def test_a_cube_talking_is_a_cube_that_is_there(self) -> None:
+        """A client opened mid session hears no arrival, and shows the cube."""
+        self.view.dispatch(envelope('cube.facelets', {'facelets': FACELETS}))
+
+        self.assertTrue(self.view.present)
+
+    def test_the_session_plane_says_nothing_of_the_cube(self) -> None:
+        """What term-timer knows alone is no proof a cube is there."""
+        self.view.dispatch(envelope('session.record', {'kind': 'single'}))
+
+        self.assertFalse(self.view.connected)
+
+    def test_a_cube_that_left_is_not_shown_any_more(self) -> None:
+        """A link that drops takes the cube off the window."""
+        self.view.dispatch(envelope('cube.facelets', {'facelets': FACELETS}))
+        self.view.dispatch(
+            envelope('cube.link', {'connected': False, 'reason': 'lost'}),
+        )
+
+        self.assertFalse(self.view.present)
+
+    def test_a_link_that_comes_back_shows_the_cube_again(self) -> None:
+        """A cube that describes itself twice is described once."""
+        self.view.dispatch(envelope('cube.facelets', {'facelets': FACELETS}))
+        self.view.dispatch(
+            envelope('cube.link', {'connected': False, 'reason': 'lost'}),
+        )
+        self.view.dispatch(
+            envelope('cube.link', {'connected': True, 'reason': 'opened'}),
+        )
+
+        self.assertTrue(self.view.present)
+
+    def test_a_new_session_starts_with_no_cube(self) -> None:
+        """A publisher that restarted describes its cube again."""
+        self.view.dispatch(envelope('cube.facelets', {'facelets': FACELETS}))
+
+        self.view.dispatch(
+            envelope('cube.gyro', {}, session_id='ffffffff'),
+        )
+
+        self.assertFalse(self.view.present)
+
+
+def screen_place(instance: CubieInstance, orientation: Quat) -> Vec3:
+    """
+    Tell where a piece stands in the window, the cube held as it is.
+
+    Args:
+        instance: The piece to locate.
+        orientation: How the whole cube is held, which the shader
+            applies on top of the model of a piece.
+
+    Returns:
+        The center of the piece, in the frame of the window.
+
+    """
+    return orientation.to_matrix().transform_point(
+        instance.model.transform_point(ORIGIN),
+    )
+
+
+class AssemblyTestCase(unittest.TestCase):
+    """The cube gathering around its core, and letting go of it."""
+
+    def test_a_cube_gathers_in_a_bounded_time(self) -> None:
+        """A cube that arrives is whole once the magnet is done."""
+        assembly = Assembly()
+
+        assembly.settle(present=True, delta=MAGNET_DURATION / 2)
+
+        self.assertAlmostEqual(assembly.progress, 0.5)
+        self.assertTrue(assembly.rising)
+
+        assembly.settle(present=True, delta=MAGNET_DURATION)
+
+        self.assertEqual(assembly.progress, 1.0)
+
+    def test_a_cube_that_left_stops_at_the_floor(self) -> None:
+        """A cube that falls never falls past the floor."""
+        assembly = Assembly(progress=1.0, rising=True)
+
+        assembly.settle(present=False, delta=FALL_DURATION * 2)
+
+        self.assertEqual(assembly.progress, 0.0)
+        self.assertFalse(assembly.rising)
+
+    def test_a_frame_going_backwards_moves_nothing(self) -> None:
+        """A clock that went back leaves the assembly where it was."""
+        assembly = Assembly(progress=0.5)
+
+        assembly.settle(present=True, delta=-1.0)
+
+        self.assertEqual(assembly.progress, 0.5)
+
+    def test_a_whole_cube_is_handed_back_untouched(self) -> None:
+        """A cube that is all there costs the effect nothing at all."""
+        scene = solved_scene()
+
+        self.assertIs(
+            Assembly(progress=1.0, rising=True).apply(scene, IDENTITY),
+            scene,
+        )
+
+    def test_a_cube_that_is_not_there_has_no_piece(self) -> None:
+        """A disconnected cube leaves the ball core alone in the window."""
+        scene = solved_scene()
+        assembly = Assembly()
+
+        empty = assembly.apply(scene, IDENTITY)
+
+        self.assertEqual(empty.instances, ())
+        self.assertIs(assembly.apply(scene, IDENTITY), empty)
+
+    def test_every_piece_is_still_drawn_in_flight(self) -> None:
+        """A cube on its way keeps all of its pieces."""
+        scene = solved_scene()
+
+        flying = Assembly(progress=0.5, rising=True).apply(scene, IDENTITY)
+
+        self.assertEqual(len(flying.instances), len(scene.instances))
+
+    def test_pieces_fall_down_the_window_however_the_cube_is_held(
+            self,
+    ) -> None:
+        """The floor is the floor of the screen, not the D face."""
+        scene = solved_scene()
+        held = Quat.from_axis_angle(Vec3(0.0, 0.0, 1.0), math.pi / 3)
+
+        # Halfway through the travel of the piece that leads, so that
+        # not one of them has landed whatever the stagger is set to
+        falling = Assembly(
+            progress=(1.0 - STAGGER) / 2, rising=False,
+        ).apply(scene, held)
+
+        for resting, flying in zip(
+                scene.instances, falling.instances, strict=True,
+        ):
+            place = screen_place(resting, held)
+            flight = screen_place(flying, held)
+
+            self.assertAlmostEqual(flight.x, place.x)
+            self.assertAlmostEqual(flight.z, place.z)
+            self.assertLess(flight.y, place.y)
+
+    def test_the_lowest_pieces_are_the_first_to_gather(self) -> None:
+        """A cube builds up from the floor rather than in one block."""
+        flight = Flight(
+            world=IDENTITY.to_matrix(),
+            unworld=IDENTITY.to_matrix(),
+            floor=3.0,
+            reach=1.0,
+            progress=0.5,
+            rising=True,
+        )
+
+        self.assertGreater(flight.phase(-1.0), flight.phase(1.0))
+
+    def test_a_cube_falls_the_same_way_twice(self) -> None:
+        """What a piece is turned by in flight is drawn from itself."""
+        scene = solved_scene()
+
+        self.assertEqual(
+            Assembly(progress=0.5, rising=True).apply(
+                scene, IDENTITY,
+            ).instances,
+            Assembly(progress=0.5, rising=True).apply(
+                scene, IDENTITY,
+            ).instances,
+        )
+
+    def test_two_pieces_do_not_turn_alike(self) -> None:
+        """No two neighbours tumble on the same axis."""
+        cubies = [instance.cubie for instance in solved_scene().instances]
+
+        self.assertNotEqual(tumble_axis(cubies[0]), tumble_axis(cubies[1]))
+
+    def test_the_cube_is_measured_once(self) -> None:
+        """A geometry built once for good is measured once for good."""
+        assembly = Assembly()
+        reach = assembly.measure(solved_scene())
+
+        self.assertGreater(reach, 0.0)
+        self.assertEqual(
+            assembly.measure(replace(solved_scene(), instances=())), reach,
+        )
+
+    def test_a_core_with_no_cube_around_it_is_grey(self) -> None:
+        """The one thing left in the window says there is nothing behind."""
+        self.assertEqual(
+            Assembly().tint(DEFAULT_LOOK).core_color, DORMANT_CORE,
+        )
+
+    def test_a_whole_cube_keeps_the_look_it_was_handed(self) -> None:
+        """A connected viewer draws the picture cubing-algs describes."""
+        self.assertIs(
+            Assembly(progress=1.0, rising=True).tint(DEFAULT_LOOK),
+            DEFAULT_LOOK,
+        )
+
+    def test_the_core_lights_up_as_the_pieces_gather(self) -> None:
+        """The color travels with the pieces, not on a switch of its own."""
+        mixed = Assembly(progress=0.5, rising=True).tint(
+            DEFAULT_LOOK,
+        ).core_color
+
+        for dormant, channel, live in zip(
+                DORMANT_CORE, mixed, CORE_COLOR, strict=True,
+        ):
+            self.assertGreater(channel, min(dormant, live))
+            self.assertLess(channel, max(dormant, live))
+
+    def test_time_passes_before_the_picture_is_drawn(self) -> None:
+        """One call lets the time pass and hands the picture over."""
+        scene = solved_scene()
+        assembly = Assembly()
+
+        drawn = assembly.advance(
+            scene, IDENTITY, present=True, delta=MAGNET_DURATION,
+        )
+
+        self.assertEqual(assembly.progress, 1.0)
+        self.assertIs(drawn, scene)
 
 
 class CaptureTestCase(unittest.TestCase):
@@ -438,11 +725,30 @@ class CubeCastHostTestCase(unittest.TestCase):
             viewer=self.viewer, title=self.view.title, view=self.view,
         )
 
-    def test_frame_is_drawn_by_the_viewer(self) -> None:
-        """The frame of the host is the frame of the viewer."""
+    def test_frame_is_drawn_between_advance_and_draw(self) -> None:
+        """The host slips the assembly between the two of the viewer."""
+        self.viewer.advance.return_value = solved_scene()
+        self.viewer.look = DEFAULT_LOOK
+
         self.host.frame(0.016)
 
-        self.viewer.frame.assert_called_once_with(0.016)
+        self.viewer.advance.assert_called_once_with(0.016)
+        self.viewer.frame.assert_not_called()
+
+    def test_frame_draws_no_piece_without_a_cube(self) -> None:
+        """A stream with no cube behind it leaves the core alone."""
+        self.viewer.advance.return_value = solved_scene()
+        self.viewer.look = DEFAULT_LOOK
+
+        self.host.frame(0.016)
+
+        self.assertEqual(
+            self.viewer.draw.call_args.kwargs['scene'].instances, (),
+        )
+        self.assertEqual(
+            self.viewer.draw.call_args.kwargs['look'].core_color,
+            DORMANT_CORE,
+        )
 
     def test_unchanged_title_is_not_written(self) -> None:
         """A title that did not move is not written again."""
@@ -458,7 +764,9 @@ class CubeCastHostTestCase(unittest.TestCase):
         """A title the stream changed reaches the window bar."""
         glfw = MagicMock()
         self.host.window = object()
-        self.view.hardware = 'GANi3'
+        self.view.dispatch(
+            envelope('cube.hardware', {'hardware_name': 'GANi3'}),
+        )
 
         with patch.dict(sys.modules, {'glfw': glfw}):
             self.host.retitle()
@@ -469,7 +777,9 @@ class CubeCastHostTestCase(unittest.TestCase):
 
     def test_title_without_a_window_is_only_remembered(self) -> None:
         """A host with no window keeps the title for when it opens."""
-        self.view.hardware = 'GANi3'
+        self.view.dispatch(
+            envelope('cube.hardware', {'hardware_name': 'GANi3'}),
+        )
 
         self.host.retitle()
 
@@ -935,7 +1245,7 @@ class MainTestCase(unittest.TestCase):
         self.assertEqual(host.viewer.window_size, (640, 480))
         self.assertEqual(host.viewer.mode, 'oll')
         self.assertIs(host.viewer.orientation, host.view.tracker)
-        self.assertEqual(host.title, WINDOW_TITLE)
+        self.assertEqual(host.title, f'{ WINDOW_TITLE } · offline')
         self.assertTrue(host.msaa)
 
     def test_build_host_without_antialiasing(self) -> None:

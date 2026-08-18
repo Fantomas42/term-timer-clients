@@ -50,9 +50,12 @@ any particular order: the window waits for a session, follows the next
 one when term-timer is restarted, and can be closed and reopened
 without the session ever noticing.
 
-A window that opens on a cube nobody has described yet shows a solved
-one, and gets it right at the first state the cube reports — a single
-move is enough.
+A window that opens on a cube nobody has described yet shows the ball
+core alone, the pieces of the cube lying on the floor out of the frame.
+They gather around the core the moment a cube connects and says what it
+looks like, and they let go and fall back down when the link drops —
+the state underneath is kept, and it is the one the next connection
+starts from.
 
 ```
 Usage: cubecast [-h] -e ENDPOINT [-o ORIENTATION] [-p PALETTE] [-m MODE]

@@ -9,7 +9,9 @@ from cubing_algs.display.gl.context import GLFWWindow
 from cubing_algs.display.gl.context import has_glfw
 from cubing_algs.display.gl.host import GlfwHost
 from cubing_algs.display.gl.renderer import OffscreenTarget
+from cubing_algs.display.gl.viewer import resolve_orientation
 
+from term_timer_clients.viewer.assembly import Assembly
 from term_timer_clients.viewer.client import CubeCast
 
 logger = logging.getLogger(__name__)
@@ -77,6 +79,13 @@ class CubeCastHost(GlfwHost):
     Ctrl held down over it carries the window instead - a gesture a
     decorated window answers too, where it merely doubles its bar.
 
+    ``assembly`` is where the pieces of the cube stand between the
+    floor and the core, which the link is what moves: a cube nobody is
+    connected to lies out of the window and leaves the ball core alone
+    in it, and one that connects gathers around it. The effect is
+    layered on the very seam the viewer documents for it, so a frame
+    with no cube to show costs a scene with no piece in it.
+
     ``msaa`` is what the cube is antialiased by, and turning it off is
     a way out of the offscreen detour a transparent window imposes:
     the cube is then drawn into the window itself, aliased but with
@@ -103,6 +112,12 @@ class CubeCastHost(GlfwHost):
     # refused a window long before the mouse is of any interest.
     carrying: bool = field(init=False, default=False)
     anchor: tuple[float, float] = field(init=False, default=(0.0, 0.0))
+
+    # Where the pieces of the cube stand between the floor and the
+    # core. It starts on the floor: a window opens on a stream that has
+    # said nothing yet, and a cube nobody has described is a cube that
+    # is not there.
+    assembly: Assembly = field(init=False, default_factory=Assembly)
 
     @property
     def offscreen(self) -> bool:
@@ -259,9 +274,37 @@ class CubeCastHost(GlfwHost):
         self.retitle()
         self.refresh_target()
 
-        super().frame(delta)
+        self.draw_cube(delta)
 
         self.resolve()
+
+    def draw_cube(self, delta: float) -> None:
+        """
+        Draw the cube, its pieces where the link has them stand.
+
+        The frame of the parent is taken apart rather than called: the
+        viewer documents ``advance()`` and ``draw()`` as the seam an
+        effect slips between, and describing the picture to ``draw()``
+        is what keeps the effect out of the viewer itself - nothing is
+        written and put back, so nothing can leak into the camera the
+        mouse writes to, nor compound from one frame to the next.
+
+        Args:
+            delta: Seconds gone by since the last frame.
+
+        """
+        drawn = self.assembly.advance(
+            self.viewer.advance(delta),
+            resolve_orientation(self.viewer.orientation),
+            present=self.view.present,
+            delta=delta,
+        )
+
+        # Read after the time has passed, and on its own line: the core
+        # is painted for the moment the pieces have just been placed in.
+        look = self.assembly.tint(self.viewer.look)
+
+        self.viewer.draw(scene=drawn, look=look)
 
     def retitle(self) -> None:
         """

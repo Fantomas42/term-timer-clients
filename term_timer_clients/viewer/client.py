@@ -11,6 +11,7 @@ from cubing_algs.parsing import parse_moves
 from cubing_algs.transform.translate import translate_moves
 from cubing_algs.vcube import VCube
 
+from term_timer_clients.protocol import CUBE_PREFIX
 from term_timer_clients.protocol import PROTOCOL_VERSION
 
 if TYPE_CHECKING:
@@ -25,6 +26,11 @@ logger = logging.getLogger(__name__)
 WINDOW_TITLE = 'Cubecast'
 WINDOW_SEPARATOR = ' · '
 WINDOW_OFFLINE = 'offline'
+
+# The one topic of the cube plane that is not the cube talking: it is
+# published by term-timer about the cube, and says so even - and above
+# all - when the cube says nothing at all any more.
+LINK_TOPIC = 'cube.link'
 
 
 class CubeCast:
@@ -73,7 +79,8 @@ class CubeCast:
         self.session_id = ''
         self.hardware = ''
         self.battery = ''
-        self.connected = True
+        self.connected = False
+        self.described = False
         # Starts on the version this viewer speaks, so that a foreign
         # stream is reported once and not on every message it sends
         self.version_seen: Any = PROTOCOL_VERSION
@@ -85,8 +92,24 @@ class CubeCast:
             'cube.gyro': self.turn_cube,
             'cube.hardware': self.name_cube,
             'cube.battery': self.charge_cube,
-            'cube.link': self.link_cube,
+            LINK_TOPIC: self.link_cube,
         }
+
+    @property
+    def present(self) -> bool:
+        """
+        Tell whether there is a cube to show, and what it looks like.
+
+        Both halves are needed, and the second is the one that is easy
+        to forget: a link is up long before the cube has said anything
+        of its colors, and a viewer assembling on the link alone would
+        gather a solved cube and then repaint it in mid air.
+
+        Returns:
+            True when a cube is there and has described itself.
+
+        """
+        return self.connected and self.described
 
     @property
     def title(self) -> str:
@@ -128,7 +151,8 @@ class CubeCast:
         self.session_id = session_id
         self.hardware = ''
         self.battery = ''
-        self.connected = True
+        self.connected = False
+        self.described = False
 
         if self.tracker is not None:
             self.tracker.reset()
@@ -174,7 +198,16 @@ class CubeCast:
         if session_id != self.session_id:
             self.restart(session_id)
 
-        handler = self.handlers.get(str(message.get('topic', '')))
+        topic = str(message.get('topic', ''))
+
+        # A cube announces its departure and never its arrival, and a
+        # client opened in the middle of a session has heard neither:
+        # the cube talking at all is what says it is there, and the
+        # link topic is the only one that ever says it is gone.
+        if topic.startswith(CUBE_PREFIX) and topic != LINK_TOPIC:
+            self.connected = True
+
+        handler = self.handlers.get(topic)
         if handler is None:
             return
 
@@ -207,6 +240,7 @@ class CubeCast:
             return
 
         self.viewer.cube = self.rebuild(cube)
+        self.described = True
 
     def play_move(self, data: dict[str, Any]) -> None:
         """
@@ -304,9 +338,15 @@ class CubeCast:
         """
         Follow the link with the cube, without ever closing the window.
 
-        A cube that goes away leaves the picture where it was: it is the
+        A cube that goes away takes its pieces down with it and leaves
+        the core alone, the state it left in kept underneath: it is the
         very state the next connection starts from, and a window that
         closed itself would take the session with it.
+
+        What is described stays described. A link that drops and comes
+        back is the same cube, and the colors it was last seen in are
+        the ones it gathers back in - the hardware describes itself
+        again at the next connection anyway.
 
         Args:
             data: Payload of a ``cube.link`` message.
