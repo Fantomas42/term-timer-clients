@@ -31,6 +31,9 @@ REPLAYS = Path(__file__).parent / 'replays' / 'gan_gen2'
 
 ENDPOINT = 'tcp://127.0.0.1:5333'
 
+# The glfw code of backspace, glfw never being imported here
+BACKSPACE = 259
+
 # Topic of every driver event the viewer listens to
 TOPICS = {
     'facelets': 'cube.facelets',
@@ -441,6 +444,52 @@ class CubeViewHostTestCase(unittest.TestCase):
         self.host.retitle()
 
         self.assertEqual(self.host.title, f'{ WINDOW_TITLE } · GANi3')
+
+    def test_move_key_is_not_played(self) -> None:
+        """A face pressed on the keyboard never reaches the cube."""
+        glfw = MagicMock()
+
+        with patch.dict(sys.modules, {'glfw': glfw}):
+            self.host.on_key(self.host.window, ord('R'), 0, glfw.PRESS, 0)
+
+        self.viewer.press.assert_not_called()
+
+    def test_move_key_is_answered(self) -> None:
+        """A key the window does not use is claimed rather than played."""
+        glfw = MagicMock()
+
+        with patch.dict(sys.modules, {'glfw': glfw}):
+            answered = self.host.on_viewer_key(ord('R'))
+
+        self.assertTrue(answered)
+
+    def test_viewer_key_is_still_read(self) -> None:
+        """The keys of the viewer keep the meaning cubing-algs gives them."""
+        glfw = MagicMock()
+        glfw.KEY_SPACE = ord(' ')
+
+        with patch.dict(sys.modules, {'glfw': glfw}):
+            answered = self.host.on_viewer_key(ord(' '))
+
+        self.assertTrue(answered)
+        self.viewer.reset_camera.assert_called_once_with()
+
+    def test_backspace_does_not_rebuild_the_cube(self) -> None:
+        """A cube put back together is a state the stream never sent."""
+        glfw = MagicMock()
+        glfw.KEY_BACKSPACE = BACKSPACE
+
+        with patch.dict(sys.modules, {'glfw': glfw}):
+            answered = self.host.on_viewer_key(BACKSPACE)
+
+        self.assertTrue(answered)
+        self.viewer.reset_cube.assert_not_called()
+
+    def test_shortcuts_leave_the_moves_out(self) -> None:
+        """The list written when the window opens holds no move."""
+        self.assertNotIn('Turn a face', self.host.shortcuts)
+        self.assertNotIn('Backspace', self.host.shortcuts)
+        self.assertIn('Esc, Q', self.host.shortcuts)
 
 
 class MainTestCase(unittest.TestCase):

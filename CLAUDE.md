@@ -53,7 +53,14 @@ Three layers, and the boundaries between them are the point:
   `self.handlers` dict. This is where a new topic is handled.
 - **`viewer/main.py` / `viewer/host.py`** — the entry point assembles
   window, viewer and stream; `CubeViewHost` extends the cubing-algs
-  `GlfwHost` and only adds a window title.
+  `GlfwHost` with a window title, and takes the keyboard moves back
+  off. The stream is the only thing entitled to turn this cube: a face
+  played from the keyboard — or a `Backspace` putting the cube back
+  together — would drift the window away from the hardware with nothing
+  to bring the two back together, so `on_viewer_key()` claims every key
+  the window does not answer itself. `VIEWER_SHORTCUTS` is the list
+  that says so, written when the window opens through the `shortcuts`
+  field of `GlfwHost`.
 
 The threading split is deliberate and constrains where things may be
 done: the stream thread pushes moves the moment they arrive (the
