@@ -101,6 +101,7 @@ what only looks at the cube:
 
 ```
   Drag             Orbit the cube
+  Ctrl drag        Carry the window across the screen
   Wheel            Zoom in and out
   Space            Frame the cube again
   Tab              Open the cube up, and put it back together
@@ -112,13 +113,17 @@ what only looks at the cube:
   Esc, Q           Close the window
 ```
 
+The carry is what replaces a title bar when there is none left, and it
+is added to the drag rather than put in its place: which button orbits
+the cube is the same whatever the window looks like, and the gesture is
+there to be learnt before `--transparent` is ever passed — on a window
+that still has its bar, where it merely doubles it.
+
 `--transparent` lays the cube on the desktop: the background goes, the
-decoration with it, and the window floats above everything else. The
-window then has no bar left to carry it by, so the left button moves it
-and the orbit goes to the right one. It also has nowhere left to show
-the title, and the hardware and the battery are written there — a
-compositor that refuses the transparency says so in a warning, and the
-window opens on the grey of the viewer.
+decoration with it, and the window floats above everything else. It has
+nowhere left to show the title, and the hardware and the battery are
+written there — a compositor that refuses the transparency says so in a
+warning, and the window opens on the grey of the viewer.
 
 A transparent window is refused the multisampling of an ordinary one,
 so the cube is antialiased aside and copied in. `--no-msaa` gives that

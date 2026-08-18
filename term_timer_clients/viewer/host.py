@@ -14,8 +14,11 @@ from term_timer_clients.viewer.client import CubeView
 
 logger = logging.getLogger(__name__)
 
-# The keys are the same whatever the window is: only the mouse changes,
-# a window without decoration having no bar left to carry it by.
+# The keys are the same whatever the window is, and so is the mouse:
+# a plain drag orbits the cube in either of them. A window without
+# decoration has no bar left to carry it by, and what replaces the bar
+# is added to the drag rather than put in its place - a mode moving the
+# one gesture the viewer is made of would cost more than the bar does.
 WINDOW_SHORTCUTS = """\
   Wheel            Zoom in and out
   Space            Frame the cube again
@@ -34,12 +37,7 @@ WINDOW_SHORTCUTS = """\
 VIEWER_SHORTCUTS = f"""\
 cube-view
   Drag             Orbit the cube
-{ WINDOW_SHORTCUTS }"""
-
-TRANSPARENT_SHORTCUTS = f"""\
-cube-view
-  Left drag        Carry the window across the screen
-  Right drag       Orbit the cube
+  Ctrl drag        Carry the window across the screen
 { WINDOW_SHORTCUTS }"""
 
 # The background of a window whose compositor is asked to let the
@@ -75,6 +73,10 @@ class CubeViewHost(GlfwHost):
     costs is the title: a window without a bar has nowhere to write the
     hardware and the battery any more.
 
+    The mouse is the same in either mode: a drag orbits the cube, and
+    Ctrl held down over it carries the window instead - a gesture a
+    decorated window answers too, where it merely doubles its bar.
+
     ``msaa`` is what the cube is antialiased by, and turning it off is
     a way out of the offscreen detour a transparent window imposes:
     the cube is then drawn into the window itself, aliased but with
@@ -90,16 +92,17 @@ class CubeViewHost(GlfwHost):
     shortcuts: str = VIEWER_SHORTCUTS
 
     # Where the cube is drawn when the window itself cannot hold the
-    # samples, and what the window is carried by: both belong to the
-    # transparent mode alone, and stay None and False without it.
+    # samples: it belongs to the transparent mode alone, and stays
+    # None without it.
     target: OffscreenTarget | None = field(init=False, default=None)
+
+    # What the window is carried by. A window is free to place itself
+    # on every platform cubing-algs opens one on: a Wayland session is
+    # given the X11 variant of glfw, moderngl having no way to read a
+    # context off the other one, and a platform that stayed Wayland is
+    # refused a window long before the mouse is of any interest.
     carrying: bool = field(init=False, default=False)
     anchor: tuple[float, float] = field(init=False, default=(0.0, 0.0))
-
-    def __post_init__(self) -> None:
-        """Say what the mouse does, the window deciding it."""
-        if self.transparent:
-            self.shortcuts = TRANSPARENT_SHORTCUTS
 
     @property
     def offscreen(self) -> bool:
@@ -322,10 +325,16 @@ class CubeViewHost(GlfwHost):
         """
         Take hold of the window, or of the cube, until the button goes.
 
-        A window without decoration has no bar to grab, so the left
-        button carries it and the right one - which does nothing
-        otherwise - is where the orbit moves. A decorated window keeps
-        the left button on the cube, as cubing-algs has it.
+        Which button orbits is what a mode may not change: the drag is
+        the one gesture the viewer is made of, and a window looking
+        different is no reason to go and find it elsewhere. So the
+        carry a window with no bar needs is Ctrl held down at the
+        moment of the press, and a decorated window answers it too,
+        where it merely doubles the bar it still has.
+
+        Ctrl let go halfway through carries the window all the same:
+        glfw says nothing of a modifier changing, and the carry belongs
+        to the button that began it.
 
         Args:
             window: The window the button was pressed in.
@@ -336,18 +345,20 @@ class CubeViewHost(GlfwHost):
         """
         import glfw  # noqa: PLC0415
 
-        if not self.transparent:
+        if button != glfw.MOUSE_BUTTON_LEFT:
             super().on_mouse_button(window, button, action, mods)
             return
 
-        pressed = action == glfw.PRESS
-
-        if button == glfw.MOUSE_BUTTON_LEFT:
-            self.carrying = pressed
+        if action == glfw.PRESS and mods & glfw.MOD_CONTROL:
+            self.carrying = True
             self.anchor = glfw.get_cursor_pos(window)
-        elif button == glfw.MOUSE_BUTTON_RIGHT:
-            self.dragging = pressed
-            self.cursor = glfw.get_cursor_pos(window)
+            return
+
+        if self.carrying:
+            self.carrying = False
+            return
+
+        super().on_mouse_button(window, button, action, mods)
 
     def on_cursor(self, _window: GLFWWindow, x: float, y: float) -> None:
         """

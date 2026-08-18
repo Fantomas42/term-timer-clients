@@ -75,6 +75,19 @@ Three layers, and the boundaries between them are the point:
   transparency is read back off the window and logged. `--no-msaa`
   gives that detour up: `offscreen` is what says a target is built at
   all, and no antialiasing means none in the window either.
+- **The mouse** — a drag orbits the cube in either mode, and no mode
+  may move that: it is the one gesture the viewer is made of, and a
+  `--transparent` displacing it would make the flag change what the
+  hands do. What a window with no bar needs on top is the carry,
+  `Ctrl` held down at the press, and a decorated window answers it too
+  — there it merely doubles the bar it still has, which is what makes
+  the gesture learnable before the flag is ever passed. So
+  `VIEWER_SHORTCUTS` is one list, and `on_mouse_button()` reads the
+  modifier rather than the mode. The carry needs a window free to
+  place itself, and every window opened here is: cubing-algs hands a
+  Wayland session the X11 variant of glfw — moderngl having no way to
+  read a context off the other one — and refuses a window outright on
+  a platform that stayed Wayland.
 
 The threading split is deliberate and constrains where things may be
 done: the stream thread pushes moves the moment they arrive (the

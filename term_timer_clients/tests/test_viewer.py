@@ -38,6 +38,32 @@ ENDPOINT = 'tcp://127.0.0.1:5333'
 # The glfw code of backspace, glfw never being imported here
 BACKSPACE = 259
 
+# The glfw codes of the mouse, named here for the same reason
+LEFT_BUTTON = 0
+RIGHT_BUTTON = 1
+RELEASE = 0
+PRESS = 1
+CONTROL = 2
+
+
+def mouse_glfw() -> MagicMock:
+    """
+    Build the glfw the mouse handlers read their codes from.
+
+    Returns:
+        A mock naming the buttons, the actions and the modifier, and
+        answering a cursor position the anchor can be read from.
+
+    """
+    glfw = MagicMock()
+    glfw.PRESS = PRESS
+    glfw.MOUSE_BUTTON_LEFT = LEFT_BUTTON
+    glfw.MOD_CONTROL = CONTROL
+    glfw.get_cursor_pos.return_value = (5.0, 7.0)
+
+    return glfw
+
+
 # Topic of every driver event the viewer listens to
 TOPICS = {
     'facelets': 'cube.facelets',
@@ -496,8 +522,8 @@ class CubeViewHostTestCase(unittest.TestCase):
         self.assertIn('Esc, Q', self.host.shortcuts)
 
 
-class CubeViewHostTransparentTestCase(unittest.TestCase):
-    """The cube laid on the desktop, and what it is drawn through."""
+class CubeViewHostWindowCase(unittest.TestCase):
+    """What every test of the window is wired on, and no test."""
 
     def setUp(self) -> None:
         """Wire a transparent host on a mocked viewer and a client."""
@@ -524,14 +550,9 @@ class CubeViewHostTransparentTestCase(unittest.TestCase):
             viewer=self.viewer, title=self.view.title, view=self.view,
         )
 
-    def test_shortcuts_name_the_two_buttons(self) -> None:
-        """A window with no bar says what carries it."""
-        self.assertIn('Left drag', self.host.shortcuts)
-        self.assertIn('Right drag', self.host.shortcuts)
 
-    def test_an_opaque_window_keeps_a_single_drag(self) -> None:
-        """A decorated window is dragged the way cubing-algs drags it."""
-        self.assertNotIn('Left drag', self.opaque_host().shortcuts)
+class CubeViewHostTransparentTestCase(CubeViewHostWindowCase):
+    """The cube laid on the desktop, and what it is drawn through."""
 
     def test_window_is_asked_to_let_the_desktop_through(self) -> None:
         """The three hints are posted before the window is created."""
@@ -682,52 +703,83 @@ class CubeViewHostTransparentTestCase(unittest.TestCase):
         target.release.assert_called_once_with()
         self.assertIsNone(self.host.target)
 
-    def test_left_button_takes_hold_of_the_window(self) -> None:
-        """A window with no bar is carried by its left button."""
-        glfw = MagicMock()
-        glfw.PRESS = 1
-        glfw.MOUSE_BUTTON_LEFT = 0
-        glfw.MOUSE_BUTTON_RIGHT = 1
-        glfw.get_cursor_pos.return_value = (5.0, 7.0)
+
+class CubeViewHostMouseTestCase(CubeViewHostWindowCase):
+    """What the mouse does, and what it does the same in both modes."""
+
+    def test_the_mouse_reads_the_same_in_both_modes(self) -> None:
+        """One list of shortcuts, a mode changing nothing of the mouse."""
+        self.assertEqual(self.host.shortcuts, self.opaque_host().shortcuts)
+        self.assertIn('Ctrl drag', self.host.shortcuts)
+        self.assertIn('Drag             Orbit', self.host.shortcuts)
+
+    def test_control_takes_hold_of_the_window(self) -> None:
+        """Ctrl over a drag carries the window instead of the cube."""
+        glfw = mouse_glfw()
 
         with patch.dict(sys.modules, {'glfw': glfw}):
-            self.host.on_mouse_button(None, 0, 1, 0)
+            self.host.on_mouse_button(None, LEFT_BUTTON, PRESS, CONTROL)
 
         self.assertTrue(self.host.carrying)
         self.assertFalse(self.host.dragging)
         self.assertEqual(self.host.anchor, (5.0, 7.0))
 
-    def test_right_button_takes_hold_of_the_cube(self) -> None:
-        """The orbit moves to the button the window left free."""
-        glfw = MagicMock()
-        glfw.PRESS = 1
-        glfw.MOUSE_BUTTON_LEFT = 0
-        glfw.MOUSE_BUTTON_RIGHT = 1
-        glfw.get_cursor_pos.return_value = (5.0, 7.0)
+    def test_a_plain_drag_orbits_a_window_with_no_bar(self) -> None:
+        """The gesture the viewer is made of is what a mode may not move."""
+        glfw = mouse_glfw()
 
         with patch.dict(sys.modules, {'glfw': glfw}):
-            self.host.on_mouse_button(None, 1, 1, 0)
+            self.host.on_mouse_button(None, LEFT_BUTTON, PRESS, 0)
 
         self.assertTrue(self.host.dragging)
         self.assertFalse(self.host.carrying)
 
+    def test_an_opaque_window_is_carried_the_same_way(self) -> None:
+        """A window keeping its bar answers the carry all the same."""
+        host = self.opaque_host()
+        glfw = mouse_glfw()
+
+        with patch.dict(sys.modules, {'glfw': glfw}):
+            host.on_mouse_button(None, LEFT_BUTTON, PRESS, CONTROL)
+
+        self.assertTrue(host.carrying)
+        self.assertFalse(host.dragging)
+
     def test_an_opaque_window_orbits_on_the_left(self) -> None:
         """A decorated window keeps the buttons cubing-algs gives it."""
         host = self.opaque_host()
-        glfw = MagicMock()
-        glfw.PRESS = 1
-        glfw.MOUSE_BUTTON_LEFT = 0
-        glfw.get_cursor_pos.return_value = (5.0, 7.0)
+        glfw = mouse_glfw()
 
         with patch.dict(sys.modules, {'glfw': glfw}):
-            host.on_mouse_button(None, 0, 1, 0)
+            host.on_mouse_button(None, LEFT_BUTTON, PRESS, 0)
 
         self.assertTrue(host.dragging)
         self.assertFalse(host.carrying)
 
+    def test_the_carry_ends_with_the_button(self) -> None:
+        """Ctrl let go halfway through carries the window all the same."""
+        glfw = mouse_glfw()
+        self.host.carrying = True
+
+        with patch.dict(sys.modules, {'glfw': glfw}):
+            self.host.on_mouse_button(None, LEFT_BUTTON, RELEASE, 0)
+
+        self.assertFalse(self.host.carrying)
+        self.assertFalse(self.host.dragging)
+
+    def test_another_button_is_left_to_the_parent(self) -> None:
+        """The right button does here what cubing-algs does with it."""
+        glfw = mouse_glfw()
+
+        with patch.dict(sys.modules, {'glfw': glfw}):
+            self.host.on_mouse_button(None, RIGHT_BUTTON, PRESS, 0)
+
+        self.assertFalse(self.host.dragging)
+        self.assertFalse(self.host.carrying)
+
     def test_window_follows_the_cursor_it_is_held_by(self) -> None:
         """The window moves by what the cursor gained on its anchor."""
-        glfw = MagicMock()
+        glfw = mouse_glfw()
         glfw.get_window_pos.return_value = (100, 100)
         self.host.carrying = True
         self.host.anchor = (10.0, 10.0)
@@ -741,7 +793,7 @@ class CubeViewHostTransparentTestCase(unittest.TestCase):
 
     def test_a_window_nobody_holds_stays_put(self) -> None:
         """A cursor moving over the window moves nothing by itself."""
-        glfw = MagicMock()
+        glfw = mouse_glfw()
 
         with patch.dict(sys.modules, {'glfw': glfw}):
             self.host.on_cursor(None, 30.0, 15.0)
