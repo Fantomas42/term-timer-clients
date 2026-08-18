@@ -1,17 +1,22 @@
 """The window of the viewer, named after the cube feeding it."""
+import logging
 from dataclasses import dataclass
 from dataclasses import field
+from dataclasses import replace
 
+from cubing_algs.display.gl import Stage
+from cubing_algs.display.gl.context import GLFWWindow
+from cubing_algs.display.gl.context import has_glfw
 from cubing_algs.display.gl.host import GlfwHost
+from cubing_algs.display.gl.renderer import OffscreenTarget
 
 from term_timer_clients.viewer.client import CubeView
 
-# What the window answers, written when it opens. The list cubing-algs
-# ships names the keys turning the cube, and a cube turned elsewhere
-# has none of them: what is left is what only looks at it.
-VIEWER_SHORTCUTS = """\
-cube-view
-  Drag             Orbit the cube
+logger = logging.getLogger(__name__)
+
+# The keys are the same whatever the window is: only the mouse changes,
+# a window without decoration having no bar left to carry it by.
+WINDOW_SHORTCUTS = """\
   Wheel            Zoom in and out
   Space            Frame the cube again
   Tab              Open the cube up, and put it back together
@@ -22,6 +27,29 @@ cube-view
   F12              Write a screenshot
   Esc, Q           Close the window\
 """
+
+# What the window answers, written when it opens. The list cubing-algs
+# ships names the keys turning the cube, and a cube turned elsewhere
+# has none of them: what is left is what only looks at it.
+VIEWER_SHORTCUTS = f"""\
+cube-view
+  Drag             Orbit the cube
+{ WINDOW_SHORTCUTS }"""
+
+TRANSPARENT_SHORTCUTS = f"""\
+cube-view
+  Left drag        Carry the window across the screen
+  Right drag       Orbit the cube
+{ WINDOW_SHORTCUTS }"""
+
+# The background of a window whose compositor is asked to let the
+# desktop through, against the opaque grey the viewer clears with.
+TRANSPARENT = (0.0, 0.0, 0.0, 0.0)
+
+TRANSPARENCY_REFUSED = (
+    'The compositor refused a transparent window: '
+    'the cube is drawn on the background of the viewer'
+)
 
 
 @dataclass
@@ -38,13 +66,148 @@ class CubeViewHost(GlfwHost):
     purpose: glfw wants its window handled from the thread that opened
     it, so the stream only ever changes what the title says, and the
     window learns it at the next frame.
+
+    ``transparent`` turns the window into a cube laid on the desktop:
+    no background, no decoration, and floating above everything. It is
+    a mode rather than three options because the three hold together -
+    a transparent window keeping its bar would show the desktop through
+    a frame, and one dropping behind another would be lost. What it
+    costs is the title: a window without a bar has nowhere to write the
+    hardware and the battery any more.
     """
 
     view: CubeView = field(kw_only=True)
+    transparent: bool = False
 
     # Redeclared rather than passed in: the keys held back are held back
     # by this class, so the list saying so belongs to it too.
     shortcuts: str = VIEWER_SHORTCUTS
+
+    # Where the cube is drawn when the window itself cannot hold the
+    # samples, and what the window is carried by: both belong to the
+    # transparent mode alone, and stay None and False without it.
+    target: OffscreenTarget | None = field(init=False, default=None)
+    carrying: bool = field(init=False, default=False)
+    anchor: tuple[float, float] = field(init=False, default=(0.0, 0.0))
+
+    def __post_init__(self) -> None:
+        """Say what the mouse does, the window deciding it."""
+        if self.transparent:
+            self.shortcuts = TRANSPARENT_SHORTCUTS
+
+    def open(self) -> Stage:
+        """
+        Open the window, transparent when it was asked to be.
+
+        The three hints a transparent window needs are posted before
+        ``create_window()`` runs rather than passed to it, which is what
+        keeps the whole of ``open()`` inherited: hints are a global glfw
+        state read when a window is created, and ``create_window()``
+        adds its own to whatever is already there instead of clearing
+        them first.
+
+        Returns:
+            The stage the viewer now draws into.
+
+        """
+        # Let the parent raise: it is the one naming the extra a missing
+        # glfw asks for, and an ``import glfw`` here would replace that
+        # with a bare ModuleNotFoundError.
+        if not self.transparent or not has_glfw():
+            return super().open()
+
+        import glfw  # noqa: PLC0415
+
+        # Hints are settable once glfw is up, and starting it twice
+        # costs nothing: the parent starts it again a few lines below.
+        glfw.init()
+        glfw.window_hint(glfw.TRANSPARENT_FRAMEBUFFER, glfw.TRUE)
+        glfw.window_hint(glfw.DECORATED, glfw.FALSE)
+        glfw.window_hint(glfw.FLOATING, glfw.TRUE)
+
+        # The samples of the window are read off the look of the viewer,
+        # and a multisampled window gets the transparency refused on
+        # this driver: the two are exclusive, so the window asks for
+        # none and the cube is antialiased in the offscreen target
+        # instead. The look is put back the moment the window is open,
+        # F12 and F4 reading their samples from it as well.
+        look = self.viewer.look
+        self.viewer.look = replace(look, samples=0)
+
+        try:
+            stage = super().open()
+        finally:
+            self.viewer.look = look
+
+        # A compositor is free to refuse, and the stage keeps the grey
+        # of the viewer when it does: a background cleared to nothing on
+        # an opaque window shows whatever the driver left there.
+        granted = glfw.get_window_attrib(
+            self.window, glfw.TRANSPARENT_FRAMEBUFFER,
+        )
+
+        if granted:
+            stage.background = TRANSPARENT
+        else:
+            logger.warning(TRANSPARENCY_REFUSED)
+
+        return stage
+
+    def close(self) -> None:
+        """
+        Give the offscreen target back, and then the window.
+
+        The target is released while the context is still alive, which
+        is what the parent takes away.
+        """
+        if self.target is not None:
+            self.target.release()
+            self.target = None
+
+        super().close()
+
+    def refresh_target(self) -> None:
+        """
+        Keep the offscreen target the size of the window it lands in.
+
+        The whole detour, in one field: the stage draws into a
+        multisampled target instead of the window, and ``resolve()``
+        brings it back, alpha and all. A window that can hold its own
+        samples needs none of it.
+        """
+        if not self.transparent:
+            return
+
+        stage = self.viewer.require_stage()
+
+        if self.target is not None and self.target.size == stage.size:
+            return
+
+        if self.target is not None:
+            self.target.release()
+
+        self.target = OffscreenTarget.create(
+            stage.context, stage.size, self.viewer.look.samples,
+        )
+        stage.target = self.target.framebuffer
+
+    def resolve(self) -> None:
+        """
+        Copy the offscreen frame to the window, samples resolved first.
+
+        Nothing to do when the cube was drawn into the window itself:
+        no target was ever built, and the frame is already where it
+        belongs.
+        """
+        target = self.target
+
+        if target is None:
+            return
+
+        context = self.viewer.require_stage().context
+
+        context.copy_framebuffer(target.resolved, target.framebuffer)
+        context.copy_framebuffer(context.screen, target.resolved)
 
     def frame(self, delta: float) -> None:
         """
@@ -55,8 +218,11 @@ class CubeViewHost(GlfwHost):
 
         """
         self.retitle()
+        self.refresh_target()
 
         super().frame(delta)
+
+        self.resolve()
 
     def retitle(self) -> None:
         """
@@ -65,6 +231,10 @@ class CubeViewHost(GlfwHost):
         In debug mode the host writes its measurements there several
         times a second, on top of this very title: what is set here is
         the base they are appended to, so the two never fight.
+
+        A transparent window has no bar to read it in, and the title is
+        written all the same: it is what a taskbar and an alt-tab show,
+        and it costs a call nobody sees.
         """
         title = self.view.title
 
@@ -79,6 +249,89 @@ class CubeViewHost(GlfwHost):
         import glfw  # noqa: PLC0415
 
         glfw.set_window_title(self.window, title)
+
+    def carry(self, x: float, y: float) -> None:
+        """
+        Move the window by what the cursor gained on its anchor.
+
+        The cursor is reported inside the window, so moving the window
+        by that gain puts the cursor back on its anchor: the offset is
+        measured afresh at every event, and nothing drifts. Counting
+        the distance from the previous position instead would move the
+        window twice.
+
+        Args:
+            x: Where the cursor stands, in pixels from the left.
+            y: Where the cursor stands, in pixels from the top.
+
+        """
+        import glfw  # noqa: PLC0415
+
+        anchor_x, anchor_y = self.anchor
+        window_x, window_y = glfw.get_window_pos(self.window)
+
+        glfw.set_window_pos(
+            self.window,
+            int(window_x + x - anchor_x),
+            int(window_y + y - anchor_y),
+        )
+
+    def on_mouse_button(
+            self,
+            window: GLFWWindow,
+            button: int,
+            action: int,
+            mods: int,
+    ) -> None:
+        """
+        Take hold of the window, or of the cube, until the button goes.
+
+        A window without decoration has no bar to grab, so the left
+        button carries it and the right one - which does nothing
+        otherwise - is where the orbit moves. A decorated window keeps
+        the left button on the cube, as cubing-algs has it.
+
+        Args:
+            window: The window the button was pressed in.
+            button: The glfw code of the button.
+            action: Whether the button was pressed or released.
+            mods: The modifier keys held down with it.
+
+        """
+        import glfw  # noqa: PLC0415
+
+        if not self.transparent:
+            super().on_mouse_button(window, button, action, mods)
+            return
+
+        pressed = action == glfw.PRESS
+
+        if button == glfw.MOUSE_BUTTON_LEFT:
+            self.carrying = pressed
+            self.anchor = glfw.get_cursor_pos(window)
+        elif button == glfw.MOUSE_BUTTON_RIGHT:
+            self.dragging = pressed
+            self.cursor = glfw.get_cursor_pos(window)
+
+    def on_cursor(self, _window: GLFWWindow, x: float, y: float) -> None:
+        """
+        Carry the window, or orbit the cube, as the mouse moves.
+
+        The parent is called whatever happens: it is what remembers
+        where the cursor stands, and the orbit reads its next move from
+        there even when the window is the thing that moved.
+
+        Args:
+            _window: The window the mouse moved over, unused: the host
+                carries the one it opened.
+            x: Where the cursor stands, in pixels from the left.
+            y: Where the cursor stands, in pixels from the top.
+
+        """
+        if self.carrying:
+            self.carry(x, y)
+
+        super().on_cursor(_window, x, y)
 
     def on_viewer_key(self, key: int) -> bool:
         """

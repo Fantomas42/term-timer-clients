@@ -61,6 +61,18 @@ Three layers, and the boundaries between them are the point:
   the window does not answer itself. `VIEWER_SHORTCUTS` is the list
   that says so, written when the window opens through the `shortcuts`
   field of `GlfwHost`.
+- **`--transparent`** — a cube laid on the desktop, and the one place
+  the host reaches around `GlfwHost` rather than under it. The three
+  glfw hints it needs are posted *before* `super().open()` runs: hints
+  are a global state read when a window is created, and
+  `create_window()` adds its own to them instead of clearing them
+  first, which is what keeps the whole of `open()` inherited. A
+  multisampled window gets the transparency refused, so `viewer.look`
+  is dropped to zero samples for the length of that call and put back
+  at once — `F12` and `F4` read their samples from it too — and the
+  cube is antialiased in an `OffscreenTarget` resolved onto the window
+  in `frame()`. Both hypotheses are checked at runtime: a refused
+  transparency is read back off the window and logged.
 
 The threading split is deliberate and constrains where things may be
 done: the stream thread pushes moves the moment they arrive (the

@@ -56,7 +56,7 @@ move is enough.
 
 ```
 Usage: cube-view [-h] -e ENDPOINT [-o ORIENTATION] [-p PALETTE]
-                 [-s WIDTHxHEIGHT] [-a] [-d]
+                 [-s WIDTHxHEIGHT] [-t] [-a] [-d]
 
 Watch a cube in 3D, from the term-timer event stream.
 
@@ -74,15 +74,43 @@ Options:
   -s WIDTHxHEIGHT, --size WIDTHxHEIGHT
                         Set the size of the window.
                         Default: 800x600.
+  -t, --transparent     Lay the cube on the desktop: no background, no window
+                        decoration, and floating above everything.
+                        Default: False.
   -a, --axes            Show the XYZ axes in the scene.
                         Default: False.
   -d, --debug           Measure what a frame costs, and write it in the title.
                         Default: False.
 ```
 
-The window itself is driven by the keys of the cubing-algs viewer:
-letters of the notation turn a face, shift for a prime, control for a
-half turn, alt to widen.
+The window turns nothing itself. The cubing-algs viewer reads the
+letters of the notation as moves, and this one holds them back: the
+stream is the only thing entitled to move a cube that is being turned
+somewhere else, and a face played from the keyboard — or a `Backspace`
+putting the cube back together — would drift the window away from the
+hardware with nothing to bring the two back together. What is left is
+what only looks at the cube:
+
+```
+  Drag             Orbit the cube
+  Wheel            Zoom in and out
+  Space            Frame the cube again
+  Tab              Open the cube up, and put it back together
+  F2               Show the X/Y/Z axes, red green blue
+  F3               Monitor the rendering performance
+  F4               Print a performance report
+  F5               Turn the vsync on and off
+  F12              Write a screenshot
+  Esc, Q           Close the window
+```
+
+`--transparent` lays the cube on the desktop: the background goes, the
+decoration with it, and the window floats above everything else. The
+window then has no bar left to carry it by, so the left button moves it
+and the orbit goes to the right one. It also has nowhere left to show
+the title, and the hardware and the battery are written there — a
+compositor that refuses the transparency says so in a warning, and the
+window opens on the grey of the viewer.
 
 ## Writing another client
 

@@ -146,6 +146,15 @@ def build_parser() -> ArgumentParser:
         ),
     )
     parser.add_argument(
+        '-t', '--transparent',
+        action='store_true',
+        help=(
+            'Lay the cube on the desktop: no background, no window\n'
+            'decoration, and floating above everything.\n'
+            'Default: False.'
+        ),
+    )
+    parser.add_argument(
         '-a', '--axes',
         action='store_true',
         help=(
@@ -189,7 +198,12 @@ def build_host(options: Namespace) -> CubeViewHost:
 
     view = CubeView(viewer, tracker, options.orientation)
 
-    return CubeViewHost(viewer=viewer, title=view.title, view=view)
+    return CubeViewHost(
+        viewer=viewer,
+        title=view.title,
+        view=view,
+        transparent=options.transparent,
+    )
 
 
 def main() -> int:

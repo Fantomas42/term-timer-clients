@@ -16,15 +16,19 @@ from unittest.mock import create_autospec
 from unittest.mock import patch
 
 from cubing_algs.display.gl import SENSOR_BASIS
+from cubing_algs.display.gl import Look
 from cubing_algs.display.gl import OrientationTracker
 from cubing_algs.display.gl import Viewer
 from cubing_algs.display.gl.context import GLContextError
+from cubing_algs.display.gl.host import GlfwHost
 from cubing_algs.vcube import VCube
 
 from term_timer_clients.tests.fixtures import envelope
+from term_timer_clients.viewer import host as window
 from term_timer_clients.viewer import main as entry
 from term_timer_clients.viewer.client import WINDOW_TITLE
 from term_timer_clients.viewer.client import CubeView
+from term_timer_clients.viewer.host import TRANSPARENT
 from term_timer_clients.viewer.host import CubeViewHost
 
 REPLAYS = Path(__file__).parent / 'replays' / 'gan_gen2'
@@ -490,6 +494,259 @@ class CubeViewHostTestCase(unittest.TestCase):
         self.assertNotIn('Turn a face', self.host.shortcuts)
         self.assertNotIn('Backspace', self.host.shortcuts)
         self.assertIn('Esc, Q', self.host.shortcuts)
+
+
+class CubeViewHostTransparentTestCase(unittest.TestCase):
+    """The cube laid on the desktop, and what it is drawn through."""
+
+    def setUp(self) -> None:
+        """Wire a transparent host on a mocked viewer and a client."""
+        self.viewer = create_autospec(Viewer, instance=True)
+        self.viewer.cube = VCube()
+        self.viewer.look = Look()
+        self.view = CubeView(self.viewer)
+        self.host = CubeViewHost(
+            viewer=self.viewer,
+            title=self.view.title,
+            view=self.view,
+            transparent=True,
+        )
+
+    def opaque_host(self) -> CubeViewHost:
+        """
+        Build the same host, on a window of the ordinary kind.
+
+        Returns:
+            A host drawing into a decorated, opaque window.
+
+        """
+        return CubeViewHost(
+            viewer=self.viewer, title=self.view.title, view=self.view,
+        )
+
+    def test_shortcuts_name_the_two_buttons(self) -> None:
+        """A window with no bar says what carries it."""
+        self.assertIn('Left drag', self.host.shortcuts)
+        self.assertIn('Right drag', self.host.shortcuts)
+
+    def test_an_opaque_window_keeps_a_single_drag(self) -> None:
+        """A decorated window is dragged the way cubing-algs drags it."""
+        self.assertNotIn('Left drag', self.opaque_host().shortcuts)
+
+    def test_window_is_asked_to_let_the_desktop_through(self) -> None:
+        """The three hints are posted before the window is created."""
+        glfw = MagicMock()
+        stage = MagicMock()
+
+        with (
+            patch.dict(sys.modules, {'glfw': glfw}),
+            patch.object(window, 'has_glfw', return_value=True),
+            patch.object(GlfwHost, 'open', return_value=stage),
+        ):
+            self.host.open()
+
+        hints = {call.args[0] for call in glfw.window_hint.call_args_list}
+
+        self.assertEqual(
+            hints,
+            {
+                glfw.TRANSPARENT_FRAMEBUFFER,
+                glfw.DECORATED,
+                glfw.FLOATING,
+            },
+        )
+        self.assertEqual(stage.background, TRANSPARENT)
+
+    def test_window_asks_for_no_samples_of_its_own(self) -> None:
+        """A multisampled window gets the transparency refused."""
+        glfw = MagicMock()
+        stage = MagicMock()
+        asked = []
+
+        def opened() -> MagicMock:
+            asked.append(self.viewer.look.samples)
+            return stage
+
+        with (
+            patch.dict(sys.modules, {'glfw': glfw}),
+            patch.object(window, 'has_glfw', return_value=True),
+            patch.object(GlfwHost, 'open', side_effect=opened),
+        ):
+            self.host.open()
+
+        self.assertEqual(asked, [0])
+
+        # Put back at once: the screenshot and the report read it too.
+        self.assertEqual(self.viewer.look.samples, Look().samples)
+
+    def test_refused_transparency_is_named(self) -> None:
+        """A compositor saying no leaves the cube on the viewer grey."""
+        glfw = MagicMock()
+        glfw.get_window_attrib.return_value = 0
+        stage = MagicMock()
+        stage.background = 'untouched'
+
+        with (
+            patch.dict(sys.modules, {'glfw': glfw}),
+            patch.object(window, 'has_glfw', return_value=True),
+            patch.object(GlfwHost, 'open', return_value=stage),
+            self.assertLogs('term_timer_clients.viewer.host', 'WARNING'),
+        ):
+            self.host.open()
+
+        self.assertEqual(stage.background, 'untouched')
+
+    def test_a_missing_glfw_is_left_to_the_parent(self) -> None:
+        """The extra to install is named by cubing-algs, not here."""
+        with (
+            patch.object(window, 'has_glfw', return_value=False),
+            patch.object(GlfwHost, 'open') as opened,
+        ):
+            self.host.open()
+
+        opened.assert_called_once_with()
+
+    def test_target_is_built_once_for_a_size(self) -> None:
+        """The offscreen target is kept until the window changes size."""
+        stage = MagicMock()
+        stage.size = (200, 200)
+        self.viewer.require_stage.return_value = stage
+        target = MagicMock()
+        target.size = (200, 200)
+
+        with patch.object(window, 'OffscreenTarget') as offscreen:
+            offscreen.create.return_value = target
+
+            self.host.refresh_target()
+            self.host.refresh_target()
+
+        offscreen.create.assert_called_once_with(
+            stage.context, (200, 200), Look().samples,
+        )
+        self.assertIs(stage.target, target.framebuffer)
+
+    def test_target_follows_a_resized_window(self) -> None:
+        """A window of another size is drawn into another target."""
+        stage = MagicMock()
+        stage.size = (400, 400)
+        self.viewer.require_stage.return_value = stage
+        target = MagicMock()
+        target.size = (200, 200)
+        self.host.target = target
+
+        with patch.object(window, 'OffscreenTarget') as offscreen:
+            self.host.refresh_target()
+
+        target.release.assert_called_once_with()
+        offscreen.create.assert_called_once()
+
+    def test_an_opaque_window_draws_into_itself(self) -> None:
+        """No detour is taken when the window holds its own samples."""
+        host = self.opaque_host()
+
+        with patch.object(window, 'OffscreenTarget') as offscreen:
+            host.refresh_target()
+
+        offscreen.create.assert_not_called()
+        self.assertIsNone(host.target)
+
+    def test_frame_lands_in_the_window(self) -> None:
+        """The frame is resolved, and then copied to the screen."""
+        stage = MagicMock()
+        self.viewer.require_stage.return_value = stage
+        target = MagicMock()
+        self.host.target = target
+
+        self.host.resolve()
+
+        stage.context.copy_framebuffer.assert_any_call(
+            target.resolved, target.framebuffer,
+        )
+        stage.context.copy_framebuffer.assert_any_call(
+            stage.context.screen, target.resolved,
+        )
+
+    def test_nothing_is_resolved_without_a_target(self) -> None:
+        """A window drawn into directly has nothing to copy."""
+        self.host.resolve()
+
+        self.viewer.require_stage.assert_not_called()
+
+    def test_close_gives_the_target_back(self) -> None:
+        """The target is released while the context is still alive."""
+        target = MagicMock()
+        self.host.target = target
+
+        self.host.close()
+
+        target.release.assert_called_once_with()
+        self.assertIsNone(self.host.target)
+
+    def test_left_button_takes_hold_of_the_window(self) -> None:
+        """A window with no bar is carried by its left button."""
+        glfw = MagicMock()
+        glfw.PRESS = 1
+        glfw.MOUSE_BUTTON_LEFT = 0
+        glfw.MOUSE_BUTTON_RIGHT = 1
+        glfw.get_cursor_pos.return_value = (5.0, 7.0)
+
+        with patch.dict(sys.modules, {'glfw': glfw}):
+            self.host.on_mouse_button(None, 0, 1, 0)
+
+        self.assertTrue(self.host.carrying)
+        self.assertFalse(self.host.dragging)
+        self.assertEqual(self.host.anchor, (5.0, 7.0))
+
+    def test_right_button_takes_hold_of_the_cube(self) -> None:
+        """The orbit moves to the button the window left free."""
+        glfw = MagicMock()
+        glfw.PRESS = 1
+        glfw.MOUSE_BUTTON_LEFT = 0
+        glfw.MOUSE_BUTTON_RIGHT = 1
+        glfw.get_cursor_pos.return_value = (5.0, 7.0)
+
+        with patch.dict(sys.modules, {'glfw': glfw}):
+            self.host.on_mouse_button(None, 1, 1, 0)
+
+        self.assertTrue(self.host.dragging)
+        self.assertFalse(self.host.carrying)
+
+    def test_an_opaque_window_orbits_on_the_left(self) -> None:
+        """A decorated window keeps the buttons cubing-algs gives it."""
+        host = self.opaque_host()
+        glfw = MagicMock()
+        glfw.PRESS = 1
+        glfw.MOUSE_BUTTON_LEFT = 0
+        glfw.get_cursor_pos.return_value = (5.0, 7.0)
+
+        with patch.dict(sys.modules, {'glfw': glfw}):
+            host.on_mouse_button(None, 0, 1, 0)
+
+        self.assertTrue(host.dragging)
+        self.assertFalse(host.carrying)
+
+    def test_window_follows_the_cursor_it_is_held_by(self) -> None:
+        """The window moves by what the cursor gained on its anchor."""
+        glfw = MagicMock()
+        glfw.get_window_pos.return_value = (100, 100)
+        self.host.carrying = True
+        self.host.anchor = (10.0, 10.0)
+
+        with patch.dict(sys.modules, {'glfw': glfw}):
+            self.host.on_cursor(None, 30.0, 15.0)
+
+        glfw.set_window_pos.assert_called_once_with(
+            self.host.window, 120, 105,
+        )
+
+    def test_a_window_nobody_holds_stays_put(self) -> None:
+        """A cursor moving over the window moves nothing by itself."""
+        glfw = MagicMock()
+
+        with patch.dict(sys.modules, {'glfw': glfw}):
+            self.host.on_cursor(None, 30.0, 15.0)
+
+        glfw.set_window_pos.assert_not_called()
 
 
 class MainTestCase(unittest.TestCase):
