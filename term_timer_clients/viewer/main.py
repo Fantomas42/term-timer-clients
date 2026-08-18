@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 LOG_FORMAT = '%(levelname)s: %(message)s'
 
-DEFAULT_WINDOW_SIZE = (800, 600)
+DEFAULT_WINDOW_SIZE = (400, 300)
 
 SIZE_SEPARATOR = 'x'
 
@@ -135,7 +135,7 @@ def build_parser() -> ArgumentParser:
         ),
     )
     parser.add_argument(
-        '-s', '--size',
+        '-w', '--window-size',
         type=parse_size,
         default=DEFAULT_WINDOW_SIZE,
         metavar='WIDTHxHEIGHT',
@@ -190,7 +190,7 @@ def build_host(options: Namespace) -> CubeViewHost:
     viewer = Viewer(
         cube=VCube(),
         palette=options.palette,
-        window_size=options.size,
+        window_size=options.window_size,
         debug=options.debug,
         show_axes=options.axes,
         orientation=tracker,
