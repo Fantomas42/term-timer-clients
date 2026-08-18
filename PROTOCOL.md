@@ -5,8 +5,9 @@ clients. It says nothing about Python, and nothing about term-timer
 beyond the names of the things it publishes: anything speaking it can
 produce the stream, and anything speaking it can consume it.
 
-It lives in two repositories — [term-timer][tt] and this one — and both
-copies carry the same version.
+It lives in this repository, the one of the clients, and
+[term-timer][tt] publishes against it: the version above is the whole
+of what the two sides have to agree on.
 
 [tt]: https://github.com/Fantomas42/term-timer
 
