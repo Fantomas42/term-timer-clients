@@ -41,11 +41,37 @@ MAGNET_BACK = 0.5
 # radians. It is spent on the way up, so a piece lands square.
 TUMBLE = 1.2
 
-# The core of a cube nobody is connected to: a grey ball, waiting. It
-# takes the color of a core back as the pieces gather around it, and
-# loses it again as they let go - the one thing left in the window has
-# to say for itself whether there is a cube behind it.
-DORMANT_CORE: tuple[float, float, float] = (0.42, 0.43, 0.45)
+# The core of a cube nobody is connected to: an obsidian ball, all but
+# out. It takes the color of a core back as the pieces gather around
+# it, and loses it again as they let go - the one thing left in the
+# window has to say for itself whether there is a cube behind it.
+DORMANT_CORE: tuple[float, float, float] = (0.04, 0.04, 0.05)
+
+# What the breath carries that ball to and back from: a dark red, the
+# ember of something on standby. Two colors nobody could take for the
+# blue green of a live core, which is what keeps waiting from being
+# read as running.
+PULSE_CORE: tuple[float, float, float] = (0.38, 0.05, 0.06)
+
+# Seconds of one full breath of a core left on its own, in and back
+# out. A ball sitting perfectly still says nothing about whether the
+# window is waiting or has stopped: the wait is what has to be seen,
+# and a slow swell is what shows it without ever asking to be looked
+# at.
+PULSE_PERIOD = 2.6
+
+# How much the rim light around a waiting core swells with the same
+# breath, as a share of the strength the look gives it. The color says
+# the ball is on standby and the light says it is waiting, which is
+# why the breath is spent on both rather than on either.
+PULSE_RIM = 1.4
+
+# How much of a lead the color of the core takes on the pieces, as the
+# exponent the progress of the assembly is read through. Below one, so
+# the core is lit well before the cube is whole: the ball is what the
+# window is showing when the link comes up, and it has to answer the
+# very first move rather than comment on the end of the travel.
+CORE_LEAD = 0.35
 
 
 def clamp(value: float) -> float:
@@ -102,22 +128,99 @@ def gravity(phase: float) -> float:
     return 1.0 - lag * lag
 
 
-def core_color(share: float) -> tuple[float, float, float]:
+def breath(elapsed: float) -> float:
     """
-    Mix the dormant core and the live one, channel by channel.
+    Tell how far into its breath a core left alone stands.
+
+    A cosine rather than a triangle: the swell has no corner at either
+    end of it, and a wait that never snaps is what keeps the effect
+    from reading as a blink. It is read at none of itself when no time
+    has passed, so a core just left on its own is the very obsidian it
+    is described by.
+
+    Args:
+        elapsed: Seconds gone by since the viewer opened, wrapped on a
+            period.
+
+    Returns:
+        How much of the breath is in, from none of it to all of it.
+
+    """
+    return (1.0 - math.cos(2.0 * math.pi * elapsed / PULSE_PERIOD)) / 2.0
+
+
+def waiting_core(elapsed: float) -> tuple[float, float, float]:
+    """
+    Paint the core of a cube nobody is connected to, breathing.
+
+    Obsidian to a dark red and back, the ember of something on
+    standby: what is waiting must not be mistaken for what is running,
+    so the breath is spent between two colors the live core is nowhere
+    near.
+
+    Args:
+        elapsed: Seconds gone by since the viewer opened, wrapped on a
+            period.
+
+    Returns:
+        The color the ball core is painted with while it waits.
+
+    """
+    share = breath(elapsed)
+
+    return (
+        DORMANT_CORE[0] + (PULSE_CORE[0] - DORMANT_CORE[0]) * share,
+        DORMANT_CORE[1] + (PULSE_CORE[1] - DORMANT_CORE[1]) * share,
+        DORMANT_CORE[2] + (PULSE_CORE[2] - DORMANT_CORE[2]) * share,
+    )
+
+
+def core_lead(progress: float) -> float:
+    """
+    Tell how much of the live color a given assembly is worth.
+
+    The core runs ahead of the pieces rather than with them: it is
+    what the window is showing when the link comes up, and a ball
+    still on standby while the cube is half built would have the
+    picture say the opposite of what the stream just said. The curve
+    is what buys the lead, so nothing needs a clock of its own and the
+    color still lands exactly with the last piece.
+
+    Args:
+        progress: How far along the pieces stand.
+
+    Returns:
+        How much of the live color the core takes.
+
+    """
+    return math.pow(progress, CORE_LEAD)
+
+
+def core_color(share: float, elapsed: float) -> tuple[float, float, float]:
+    """
+    Mix the waiting core and the live one, channel by channel.
+
+    The breath lives in the waiting end of the mix alone, which is what
+    makes it fade of itself as the pieces gather: a cube barely started
+    has already lost most of its breath, and a cube whole has none of
+    it at all.
 
     Args:
         share: How much of the live color to take, from none of it to
             all of it.
+        elapsed: Seconds gone by since the viewer opened, wrapped on a
+            period.
 
     Returns:
         The color the ball core is painted with.
 
     """
+    dormant = waiting_core(elapsed)
+
     return (
-        DORMANT_CORE[0] + (CORE_COLOR[0] - DORMANT_CORE[0]) * share,
-        DORMANT_CORE[1] + (CORE_COLOR[1] - DORMANT_CORE[1]) * share,
-        DORMANT_CORE[2] + (CORE_COLOR[2] - DORMANT_CORE[2]) * share,
+        dormant[0] + (CORE_COLOR[0] - dormant[0]) * share,
+        dormant[1] + (CORE_COLOR[1] - dormant[1]) * share,
+        dormant[2] + (CORE_COLOR[2] - dormant[2]) * share,
     )
 
 
@@ -235,8 +338,9 @@ class Assembly:
 
     The whole of the effect, and none of it touches the viewer: a scene
     comes in and a scene comes out, its pieces moved. ``progress`` is
-    the one thing kept from a frame to the next, zero for a cube lying
-    on the floor and one for a cube whole.
+    where the pieces stand, kept from a frame to the next, zero for a
+    cube lying on the floor and one for a cube whole; ``elapsed`` is
+    the clock the core left alone in the window breathes on.
 
     **The floor is the floor of the screen, not of the cube.** The
     shader draws a piece at ``world * model``, ``world`` being how the
@@ -249,6 +353,15 @@ class Assembly:
 
     progress: float = 0.0
     rising: bool = False
+
+    # Where the breath of a waiting core stands, in seconds wrapped on
+    # its own period: an effect nobody ever closes the window on would
+    # otherwise count the seconds of a whole night into a float, and
+    # lose the precision the swell is made of. It runs behind a
+    # connected cube too - the breath is worth nothing then, the mix
+    # having none of it left, and a link that drops picks it up where
+    # it stands rather than starting it over on a jump.
+    elapsed: float = 0.0
 
     # The distance of the farthest piece from the center of the cube,
     # which the floor and the ranking are both measured in. Read off a
@@ -317,6 +430,7 @@ class Assembly:
 
         """
         self.rising = present
+        self.elapsed = (self.elapsed + max(delta, 0.0)) % PULSE_PERIOD
 
         step = max(delta, 0.0) / (
             MAGNET_DURATION if present else FALL_DURATION
@@ -375,10 +489,18 @@ class Assembly:
         Paint the ball core for how much of a cube stands around it.
 
         The one thing left in the window when nothing is connected has
-        to say so for itself: a grey ball is waiting, a blue green one
-        is running. It travels with the pieces rather than on a switch
+        to say so for itself: an obsidian ball is waiting, a blue green
+        one is running. It travels with the pieces rather than on a switch
         of its own, so the core lights up as they gather and goes out
         as they let go.
+
+        A ball alone in the window breathes on top of that, colour and
+        rim light together: a still picture says nothing of whether the
+        viewer is waiting for a cube or has stopped, and the swell is
+        what tells the two apart. Both halves are weighed by what is
+        missing of the *core*, not of the cube, so the breath goes out
+        with the same lead the color comes in on rather than lingering
+        under a ball already lit.
 
         The very look is handed back once the cube is whole, so a
         connected viewer draws the picture cubing-algs describes and
@@ -395,7 +517,16 @@ class Assembly:
         if self.progress >= 1.0:
             return look
 
-        return replace(look, core_color=core_color(self.progress))
+        lead = core_lead(self.progress)
+        waiting = breath(self.elapsed) * (1.0 - lead)
+
+        return replace(
+            look,
+            core_color=core_color(lead, self.elapsed),
+            core_rim_strength=look.core_rim_strength * (
+                1.0 + PULSE_RIM * waiting
+            ),
+        )
 
     def advance(
             self,

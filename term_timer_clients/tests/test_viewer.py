@@ -39,10 +39,15 @@ from term_timer_clients.viewer import main as entry
 from term_timer_clients.viewer.assembly import DORMANT_CORE
 from term_timer_clients.viewer.assembly import FALL_DURATION
 from term_timer_clients.viewer.assembly import MAGNET_DURATION
+from term_timer_clients.viewer.assembly import PULSE_CORE
+from term_timer_clients.viewer.assembly import PULSE_PERIOD
 from term_timer_clients.viewer.assembly import STAGGER
 from term_timer_clients.viewer.assembly import Assembly
 from term_timer_clients.viewer.assembly import Flight
+from term_timer_clients.viewer.assembly import breath
+from term_timer_clients.viewer.assembly import core_lead
 from term_timer_clients.viewer.assembly import tumble_axis
+from term_timer_clients.viewer.assembly import waiting_core
 from term_timer_clients.viewer.client import WINDOW_TITLE
 from term_timer_clients.viewer.client import CubeCast
 from term_timer_clients.viewer.host import TRANSPARENT
@@ -612,7 +617,23 @@ class AssemblyTestCase(unittest.TestCase):
             assembly.measure(replace(solved_scene(), instances=())), reach,
         )
 
-    def test_a_core_with_no_cube_around_it_is_grey(self) -> None:
+    def test_time_passes_before_the_picture_is_drawn(self) -> None:
+        """One call lets the time pass and hands the picture over."""
+        scene = solved_scene()
+        assembly = Assembly()
+
+        drawn = assembly.advance(
+            scene, IDENTITY, present=True, delta=MAGNET_DURATION,
+        )
+
+        self.assertEqual(assembly.progress, 1.0)
+        self.assertIs(drawn, scene)
+
+
+class CoreTintTestCase(unittest.TestCase):
+    """The ball core, painted for the cube standing around it."""
+
+    def test_a_core_with_no_cube_around_it_is_obsidian(self) -> None:
         """The one thing left in the window says there is nothing behind."""
         self.assertEqual(
             Assembly().tint(DEFAULT_LOOK).core_color, DORMANT_CORE,
@@ -637,17 +658,77 @@ class AssemblyTestCase(unittest.TestCase):
             self.assertGreater(channel, min(dormant, live))
             self.assertLess(channel, max(dormant, live))
 
-    def test_time_passes_before_the_picture_is_drawn(self) -> None:
-        """One call lets the time pass and hands the picture over."""
-        scene = solved_scene()
-        assembly = Assembly()
-
-        drawn = assembly.advance(
-            scene, IDENTITY, present=True, delta=MAGNET_DURATION,
+    def test_a_waiting_core_breathes(self) -> None:
+        """A still picture would not say whether the viewer is alive."""
+        self.assertNotEqual(
+            Assembly(elapsed=PULSE_PERIOD / 2).tint(DEFAULT_LOOK).core_color,
+            Assembly().tint(DEFAULT_LOOK).core_color,
         )
 
-        self.assertEqual(assembly.progress, 1.0)
-        self.assertIs(drawn, scene)
+    def test_the_breath_starts_and_ends_on_the_obsidian(self) -> None:
+        """A swell with no corner is what keeps a wait from blinking."""
+        self.assertEqual(waiting_core(0.0), DORMANT_CORE)
+        self.assertEqual(waiting_core(PULSE_PERIOD), DORMANT_CORE)
+
+    def test_the_breath_peaks_on_the_ember(self) -> None:
+        """Half a period in, the ball is the dark red it breathes to."""
+        for channel, ember in zip(
+                waiting_core(PULSE_PERIOD / 2), PULSE_CORE, strict=True,
+        ):
+            self.assertAlmostEqual(channel, ember)
+
+    def test_the_breath_never_leaves_the_ember(self) -> None:
+        """Waiting is never to be read as running: no blue green in it."""
+        for elapsed in (0.3, PULSE_PERIOD / 3, PULSE_PERIOD / 2):
+            red, green, blue = waiting_core(elapsed)
+
+            for dormant, channel, ember in zip(
+                    DORMANT_CORE, (red, green, blue), PULSE_CORE, strict=True,
+            ):
+                self.assertGreaterEqual(channel, dormant)
+                self.assertLessEqual(channel, ember)
+
+            self.assertGreater(red, green)
+            self.assertGreater(red, blue)
+
+    def test_the_light_swells_with_the_color(self) -> None:
+        """The core says it is waiting with its rim as well as its hue."""
+        self.assertGreater(
+            Assembly(elapsed=PULSE_PERIOD / 2).tint(
+                DEFAULT_LOOK,
+            ).core_rim_strength,
+            DEFAULT_LOOK.core_rim_strength,
+        )
+
+    def test_the_core_lights_up_ahead_of_the_pieces(self) -> None:
+        """The ball answers the first move, not the end of the travel."""
+        self.assertEqual(core_lead(0.0), 0.0)
+        self.assertEqual(core_lead(1.0), 1.0)
+        self.assertGreater(core_lead(0.2), 0.5)
+
+    def test_the_breath_dies_out_as_the_pieces_gather(self) -> None:
+        """The breath goes out on the lead the color comes in on."""
+        peak = PULSE_PERIOD / 2
+        half = Assembly(progress=0.5, rising=True, elapsed=peak)
+
+        self.assertLess(
+            half.tint(DEFAULT_LOOK).core_rim_strength,
+            Assembly(elapsed=peak).tint(DEFAULT_LOOK).core_rim_strength,
+        )
+        self.assertGreater(
+            half.tint(DEFAULT_LOOK).core_rim_strength,
+            DEFAULT_LOOK.core_rim_strength,
+        )
+
+    def test_the_breath_is_wrapped_on_its_period(self) -> None:
+        """A window nobody closes would count a night into a float."""
+        assembly = Assembly()
+
+        for _ in range(4):
+            assembly.settle(present=False, delta=PULSE_PERIOD / 2)
+
+        self.assertLess(assembly.elapsed, PULSE_PERIOD)
+        self.assertAlmostEqual(breath(assembly.elapsed), 0.0)
 
 
 class CaptureTestCase(unittest.TestCase):
@@ -747,7 +828,7 @@ class CubeCastHostTestCase(unittest.TestCase):
         )
         self.assertEqual(
             self.viewer.draw.call_args.kwargs['look'].core_color,
-            DORMANT_CORE,
+            waiting_core(0.016),
         )
 
     def test_unchanged_title_is_not_written(self) -> None:
