@@ -74,10 +74,16 @@ class CubeViewHost(GlfwHost):
     a frame, and one dropping behind another would be lost. What it
     costs is the title: a window without a bar has nowhere to write the
     hardware and the battery any more.
+
+    ``msaa`` is what the cube is antialiased by, and turning it off is
+    a way out of the offscreen detour a transparent window imposes:
+    the cube is then drawn into the window itself, aliased but with
+    nothing in between.
     """
 
     view: CubeView = field(kw_only=True)
     transparent: bool = False
+    msaa: bool = True
 
     # Redeclared rather than passed in: the keys held back are held back
     # by this class, so the list saying so belongs to it too.
@@ -94,6 +100,19 @@ class CubeViewHost(GlfwHost):
         """Say what the mouse does, the window deciding it."""
         if self.transparent:
             self.shortcuts = TRANSPARENT_SHORTCUTS
+
+    @property
+    def offscreen(self) -> bool:
+        """
+        Tell whether the cube is drawn aside and copied to the window.
+
+        Returns:
+            True when the frame goes through a multisampled target,
+            which a transparent visual leaves as the only way to
+            antialias the cube.
+
+        """
+        return self.transparent and self.msaa
 
     def open(self) -> Stage:
         """
@@ -114,7 +133,7 @@ class CubeViewHost(GlfwHost):
         # glfw asks for, and an ``import glfw`` here would replace that
         # with a bare ModuleNotFoundError.
         if not self.transparent or not has_glfw():
-            return super().open()
+            return self.open_window()
 
         import glfw  # noqa: PLC0415
 
@@ -125,19 +144,7 @@ class CubeViewHost(GlfwHost):
         glfw.window_hint(glfw.DECORATED, glfw.FALSE)
         glfw.window_hint(glfw.FLOATING, glfw.TRUE)
 
-        # The samples of the window are read off the look of the viewer,
-        # and a multisampled window gets the transparency refused on
-        # this driver: the two are exclusive, so the window asks for
-        # none and the cube is antialiased in the offscreen target
-        # instead. The look is put back the moment the window is open,
-        # F12 and F4 reading their samples from it as well.
-        look = self.viewer.look
-        self.viewer.look = replace(look, samples=0)
-
-        try:
-            stage = super().open()
-        finally:
-            self.viewer.look = look
+        stage = self.open_window()
 
         # A compositor is free to refuse, and the stage keeps the grey
         # of the viewer when it does: a background cleared to nothing on
@@ -152,6 +159,34 @@ class CubeViewHost(GlfwHost):
             logger.warning(TRANSPARENCY_REFUSED)
 
         return stage
+
+    def open_window(self) -> Stage:
+        """
+        Open the window of the parent, asking for the samples it holds.
+
+        The samples of the window are read off the look of the viewer,
+        and the window is asked for none of them for either of two
+        reasons: a multisampled window gets the transparency refused on
+        this driver - the two are exclusive, and the cube is
+        antialiased in the offscreen target instead - and ``msaa`` off
+        asks for no antialiasing at all. The look is put back the
+        moment the window is open, the offscreen target, F12 and F4
+        reading their samples from it as well.
+
+        Returns:
+            The stage the viewer now draws into.
+
+        """
+        if not self.transparent and self.msaa:
+            return super().open()
+
+        look = self.viewer.look
+        self.viewer.look = replace(look, samples=0)
+
+        try:
+            return super().open()
+        finally:
+            self.viewer.look = look
 
     def close(self) -> None:
         """
@@ -173,9 +208,10 @@ class CubeViewHost(GlfwHost):
         The whole detour, in one field: the stage draws into a
         multisampled target instead of the window, and ``resolve()``
         brings it back, alpha and all. A window that can hold its own
-        samples needs none of it.
+        samples - or is asked for no antialiasing at all - needs none
+        of it.
         """
-        if not self.transparent:
+        if not self.offscreen:
             return
 
         stage = self.viewer.require_stage()

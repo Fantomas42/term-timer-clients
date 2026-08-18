@@ -8,6 +8,7 @@ from cubing_algs.constants import ORIENTATIONS
 from cubing_algs.display.gl import SENSOR_BASIS
 from cubing_algs.display.gl import OrientationTracker
 from cubing_algs.display.gl import Viewer
+from cubing_algs.display.mode import MODE_CONFIGS
 from cubing_algs.display.palettes import PALETTES
 from cubing_algs.exceptions import CubingAlgsError
 from cubing_algs.vcube import VCube
@@ -26,12 +27,14 @@ DEFAULT_WINDOW_SIZE = (400, 300)
 
 SIZE_SEPARATOR = 'x'
 
-# Shown as the cube reports itself, and painted as cubing-algs paints
-# it: a client of a stream has no configuration file of its own to read
-# a taste from, and the two are one option away
+# Shown as the cube reports itself, painted as cubing-algs paints it,
+# and whole: a client of a stream has no configuration file of its own
+# to read a taste from, and each of the three is one option away
 DEFAULT_ORIENTATION = ''
 
 DEFAULT_PALETTE = ''
+
+DEFAULT_MODE = ''
 
 
 def parse_stream_endpoint(value: str) -> str:
@@ -135,6 +138,16 @@ def build_parser() -> ArgumentParser:
         ),
     )
     parser.add_argument(
+        '-m', '--mode',
+        default=DEFAULT_MODE,
+        choices=sorted(MODE_CONFIGS),
+        metavar='MODE',
+        help=(
+            'Show only what a step of the solve is about, e.g. oll.\n'
+            'Default: the whole cube.'
+        ),
+    )
+    parser.add_argument(
         '-w', '--window-size',
         type=parse_size,
         default=DEFAULT_WINDOW_SIZE,
@@ -155,18 +168,11 @@ def build_parser() -> ArgumentParser:
         ),
     )
     parser.add_argument(
-        '-a', '--axes',
+        '--no-msaa',
         action='store_true',
         help=(
-            'Show the XYZ axes in the scene.\n'
-            'Default: False.'
-        ),
-    )
-    parser.add_argument(
-        '-d', '--debug',
-        action='store_true',
-        help=(
-            'Measure what a frame costs, and write it in the title.\n'
+            'Draw the cube into the window itself, aliased but with\n'
+            'nothing in between.\n'
             'Default: False.'
         ),
     )
@@ -187,12 +193,16 @@ def build_host(options: Namespace) -> CubeViewHost:
     """
     tracker = OrientationTracker(basis=SENSOR_BASIS)
 
+    # A mode is resolved once, on the solved cube the viewer is built
+    # with, and what is kept of it is the mask: the stream reposes the
+    # cube on every state it describes, and the orientation a mode
+    # carries would be thrown away with it. Here it would be anyway -
+    # the window is held by the gyroscope of the cube.
     viewer = Viewer(
         cube=VCube(),
         palette=options.palette,
+        mode=options.mode,
         window_size=options.window_size,
-        debug=options.debug,
-        show_axes=options.axes,
         orientation=tracker,
     )
 
@@ -203,6 +213,7 @@ def build_host(options: Namespace) -> CubeViewHost:
         title=view.title,
         view=view,
         transparent=options.transparent,
+        msaa=not options.no_msaa,
     )
 
 
@@ -216,10 +227,7 @@ def main() -> int:
     """
     options = build_parser().parse_args(sys.argv[1:])
 
-    logging.basicConfig(
-        level=logging.DEBUG if options.debug else logging.INFO,
-        format=LOG_FORMAT,
-    )
+    logging.basicConfig(level=logging.INFO, format=LOG_FORMAT)
 
     host = build_host(options)
     stream = EventStream(options.endpoint)

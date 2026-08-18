@@ -55,8 +55,8 @@ one, and gets it right at the first state the cube reports — a single
 move is enough.
 
 ```
-Usage: cube-view [-h] -e ENDPOINT [-o ORIENTATION] [-p PALETTE]
-                 [-s WIDTHxHEIGHT] [-t] [-a] [-d]
+Usage: cube-view [-h] -e ENDPOINT [-o ORIENTATION] [-p PALETTE] [-m MODE]
+                 [-w WIDTHxHEIGHT] [-t] [--no-msaa]
 
 Watch a cube in 3D, from the term-timer event stream.
 
@@ -71,17 +71,25 @@ Options:
   -p PALETTE, --palette PALETTE
                         Set the colors of the cube.
                         Default: the colors of a cube.
-  -s WIDTHxHEIGHT, --size WIDTHxHEIGHT
+  -m MODE, --mode MODE  Show only what a step of the solve is about, e.g. oll.
+                        Default: the whole cube.
+  -w WIDTHxHEIGHT, --window-size WIDTHxHEIGHT
                         Set the size of the window.
-                        Default: 800x600.
+                        Default: 400x300.
   -t, --transparent     Lay the cube on the desktop: no background, no window
                         decoration, and floating above everything.
                         Default: False.
-  -a, --axes            Show the XYZ axes in the scene.
-                        Default: False.
-  -d, --debug           Measure what a frame costs, and write it in the title.
+  --no-msaa             Draw the cube into the window itself, aliased but with
+                        nothing in between.
                         Default: False.
 ```
+
+`--mode` shows only what a step of the solve is about — `oll`, `pll`,
+`f2l`, `cross` and the rest of the names `python -m cubing_algs apply`
+takes — and hides what the step says nothing about. What is hidden is
+a mask over what is drawn, never over what is known: the mask is
+settled once and follows the pieces as they turn, so the cube keeps
+being the one the hardware reports.
 
 The window turns nothing itself. The cubing-algs viewer reads the
 letters of the notation as moves, and this one holds them back: the
@@ -111,6 +119,11 @@ and the orbit goes to the right one. It also has nowhere left to show
 the title, and the hardware and the battery are written there — a
 compositor that refuses the transparency says so in a warning, and the
 window opens on the grey of the viewer.
+
+A transparent window is refused the multisampling of an ordinary one,
+so the cube is antialiased aside and copied in. `--no-msaa` gives that
+detour up and draws straight into the window, aliased but with nothing
+in between — and drops the antialiasing of an ordinary window as well.
 
 ## Writing another client
 

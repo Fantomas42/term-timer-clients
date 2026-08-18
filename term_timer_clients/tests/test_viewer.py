@@ -749,6 +749,85 @@ class CubeViewHostTransparentTestCase(unittest.TestCase):
         glfw.set_window_pos.assert_not_called()
 
 
+class CubeViewHostAliasedTestCase(unittest.TestCase):
+    """A cube drawn into the window itself, antialiasing dropped."""
+
+    def setUp(self) -> None:
+        """Wire a host asked for no antialiasing at all."""
+        self.viewer = create_autospec(Viewer, instance=True)
+        self.viewer.cube = VCube()
+        self.viewer.look = Look()
+        self.view = CubeView(self.viewer)
+
+    def build_host(self, *, transparent: bool, msaa: bool) -> CubeViewHost:
+        """
+        Build a host of either window, antialiased or not.
+
+        Args:
+            transparent: Whether the cube is laid on the desktop.
+            msaa: Whether the cube is antialiased at all.
+
+        Returns:
+            The host, on the mocked viewer of this case.
+
+        """
+        return CubeViewHost(
+            viewer=self.viewer,
+            title=self.view.title,
+            view=self.view,
+            transparent=transparent,
+            msaa=msaa,
+        )
+
+    def opened_samples(self, host: CubeViewHost) -> list[int]:
+        """
+        Read the samples the window was asked for as it opened.
+
+        Args:
+            host: The host to open, its parent mocked out.
+
+        Returns:
+            What the look of the viewer held while the parent opened.
+
+        """
+        asked = []
+
+        def opened() -> MagicMock:
+            asked.append(self.viewer.look.samples)
+            return MagicMock()
+
+        with patch.object(GlfwHost, 'open', side_effect=opened):
+            host.open()
+
+        return asked
+
+    def test_a_window_holding_its_samples_keeps_them(self) -> None:
+        """An ordinary window is opened as cubing-algs opens it."""
+        host = self.build_host(transparent=False, msaa=True)
+
+        self.assertEqual(self.opened_samples(host), [Look().samples])
+
+    def test_an_aliased_window_asks_for_no_samples(self) -> None:
+        """No antialiasing at all is no antialiasing in the window."""
+        host = self.build_host(transparent=False, msaa=False)
+
+        self.assertEqual(self.opened_samples(host), [0])
+
+        # Put back at once: the screenshot and the report read it too.
+        self.assertEqual(self.viewer.look.samples, Look().samples)
+
+    def test_an_aliased_window_draws_into_itself(self) -> None:
+        """A transparent window takes no detour either, asked aliased."""
+        host = self.build_host(transparent=True, msaa=False)
+
+        with patch.object(window, 'OffscreenTarget') as offscreen:
+            host.refresh_target()
+
+        offscreen.create.assert_not_called()
+        self.assertIsNone(host.target)
+        self.assertFalse(host.offscreen)
+
+
 class MainTestCase(unittest.TestCase):
     """The command line of the client, and what it assembles."""
 
@@ -768,7 +847,7 @@ class MainTestCase(unittest.TestCase):
         """An argument naming no size stops the client."""
         for value in ('1024', '1024x', 'wide x tall', ''):
             with self.subTest(value=value), self.assertRaises(SystemExit):
-                entry.build_parser().parse_args(['-e', ENDPOINT, '-s', value])
+                entry.build_parser().parse_args(['-e', ENDPOINT, '-w', value])
 
     def test_endpoint_is_required(self) -> None:
         """A client with no endpoint has nothing to listen to."""
@@ -795,16 +874,29 @@ class MainTestCase(unittest.TestCase):
     def test_build_host(self) -> None:
         """The options of the client reach the viewer it builds."""
         options = entry.build_parser().parse_args(
-            ['-e', ENDPOINT, '-o', 'DF', '-s', '640x480', '-a'],
+            ['-e', ENDPOINT, '-o', 'DF', '-w', '640x480', '-m', 'oll'],
         )
 
         host = entry.build_host(options)
 
         self.assertEqual(host.view.orientation, 'DF')
         self.assertEqual(host.viewer.window_size, (640, 480))
-        self.assertTrue(host.viewer.show_axes)
+        self.assertEqual(host.viewer.mode, 'oll')
         self.assertIs(host.viewer.orientation, host.view.tracker)
         self.assertEqual(host.title, WINDOW_TITLE)
+        self.assertTrue(host.msaa)
+
+    def test_build_host_without_antialiasing(self) -> None:
+        """A cube asked for aliased is drawn into the window itself."""
+        options = entry.build_parser().parse_args(
+            ['-e', ENDPOINT, '-t', '--no-msaa'],
+        )
+
+        host = entry.build_host(options)
+
+        self.assertTrue(host.transparent)
+        self.assertFalse(host.msaa)
+        self.assertFalse(host.offscreen)
 
     def test_main_reads_the_stream_while_the_window_is_open(self) -> None:
         """The stream is read from before the window opens to after."""

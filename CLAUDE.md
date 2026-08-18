@@ -72,7 +72,9 @@ Three layers, and the boundaries between them are the point:
   at once — `F12` and `F4` read their samples from it too — and the
   cube is antialiased in an `OffscreenTarget` resolved onto the window
   in `frame()`. Both hypotheses are checked at runtime: a refused
-  transparency is read back off the window and logged.
+  transparency is read back off the window and logged. `--no-msaa`
+  gives that detour up: `offscreen` is what says a target is built at
+  all, and no antialiasing means none in the window either.
 
 The threading split is deliberate and constrains where things may be
 done: the stream thread pushes moves the moment they arrive (the
