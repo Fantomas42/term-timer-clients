@@ -8,6 +8,7 @@ from cubing_algs.constants import ORIENTATIONS
 from cubing_algs.display.gl import SENSOR_BASIS
 from cubing_algs.display.gl import OrientationTracker
 from cubing_algs.display.gl import Viewer
+from cubing_algs.display.image import ROTATION_PATTERN
 from cubing_algs.display.mode import MODE_CONFIGS
 from cubing_algs.display.palettes import PALETTES
 from cubing_algs.exceptions import CubingAlgsError
@@ -35,6 +36,12 @@ DEFAULT_ORIENTATION = ''
 DEFAULT_PALETTE = ''
 
 DEFAULT_MODE = ''
+
+# The framing of cubing-algs. What is given here is also what the
+# camera goes back to on Space: the viewer reframes on the rotation it
+# opened with, and a window opened turned would be lost on the first
+# reset otherwise
+DEFAULT_ROTATION = ''
 
 
 def parse_stream_endpoint(value: str) -> str:
@@ -67,6 +74,34 @@ def parse_stream_endpoint(value: str) -> str:
         raise ArgumentTypeError(msg)
 
     return endpoint
+
+
+def parse_camera_rotation(value: str) -> str:
+    """
+    Read the angle a ``--rotation`` argument frames the cube from.
+
+    cubing-algs falls back on its own framing for a string it cannot
+    read, so a typo would open the very window it was meant to change,
+    with nothing said about it: it is refused here instead.
+
+    Args:
+        value: The argument, as it was typed.
+
+    Returns:
+        The rotation string, empty for the framing of cubing-algs.
+
+    Raises:
+        ArgumentTypeError: When the argument names no rotation.
+
+    """
+    if value and not ROTATION_PATTERN.match(value):
+        msg = (
+            f'"{ value }" is not a rotation, '
+            f'expected AXISDEGREES parts, e.g. y45x-34'
+        )
+        raise ArgumentTypeError(msg)
+
+    return value
 
 
 def parse_size(value: str) -> tuple[int, int]:
@@ -148,6 +183,17 @@ def build_parser() -> ArgumentParser:
         ),
     )
     parser.add_argument(
+        '-r', '--rotation',
+        type=parse_camera_rotation,
+        default=DEFAULT_ROTATION,
+        metavar='ROTATION',
+        help=(
+            'Set the angle the camera looks the cube from,\n'
+            'as AXISDEGREES parts, e.g. y45x-34.\n'
+            'Default: the framing of cubing-algs.'
+        ),
+    )
+    parser.add_argument(
         '-w', '--window-size',
         type=parse_size,
         default=DEFAULT_WINDOW_SIZE,
@@ -202,6 +248,7 @@ def build_host(options: Namespace) -> CubeCastHost:
         cube=VCube(),
         palette=options.palette,
         mode=options.mode,
+        rotation=options.rotation,
         window_size=options.window_size,
         orientation=tracker,
     )

@@ -1292,6 +1292,17 @@ class MainTestCase(unittest.TestCase):
             with self.subTest(value=value), self.assertRaises(SystemExit):
                 entry.build_parser().parse_args(['-e', ENDPOINT, '-w', value])
 
+    def test_parse_camera_rotation(self) -> None:
+        """A rotation naming its axes and their angles is taken as is."""
+        self.assertEqual(entry.parse_camera_rotation('y45x-34'), 'y45x-34')
+        self.assertEqual(entry.parse_camera_rotation(''), '')
+
+    def test_rotation_rejects_what_is_not_one(self) -> None:
+        """A rotation cubing-algs would silently drop stops the client."""
+        for value in ('y', '45', 'y45x', 'top', 'y45 x-34'):
+            with self.subTest(value=value), self.assertRaises(SystemExit):
+                entry.build_parser().parse_args(['-e', ENDPOINT, '-r', value])
+
     def test_endpoint_is_required(self) -> None:
         """A client with no endpoint has nothing to listen to."""
         with self.assertRaises(SystemExit):
@@ -1317,7 +1328,10 @@ class MainTestCase(unittest.TestCase):
     def test_build_host(self) -> None:
         """The options of the client reach the viewer it builds."""
         options = entry.build_parser().parse_args(
-            ['-e', ENDPOINT, '-o', 'DF', '-w', '640x480', '-m', 'oll'],
+            [
+                '-e', ENDPOINT, '-o', 'DF', '-w', '640x480',
+                '-m', 'oll', '-r', 'y90x-20',
+            ],
         )
 
         host = entry.build_host(options)
@@ -1325,6 +1339,7 @@ class MainTestCase(unittest.TestCase):
         self.assertEqual(host.view.orientation, 'DF')
         self.assertEqual(host.viewer.window_size, (640, 480))
         self.assertEqual(host.viewer.mode, 'oll')
+        self.assertEqual(host.viewer.rotation, 'y90x-20')
         self.assertIs(host.viewer.orientation, host.view.tracker)
         self.assertEqual(host.title, f'{ WINDOW_TITLE } · offline')
         self.assertTrue(host.msaa)

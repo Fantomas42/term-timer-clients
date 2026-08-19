@@ -99,6 +99,16 @@ Three layers, and the boundaries between them are the point:
   the window does not answer itself. `VIEWER_SHORTCUTS` is the list
   that says so, written when the window opens through the `shortcuts`
   field of `GlfwHost`.
+- **`--rotation`** — where the camera stands when the window opens,
+  the framing string of cubing-algs and **not** a cube rotation:
+  `--orientation` translates the moves, this one only moves the eye,
+  and the gyroscope keeps turning the cube under it. It travels to
+  `Viewer.rotation`, which `reset_camera()` reads too, so `Space` comes
+  back to the angle the window opened on rather than to the library
+  default. cubing-algs falls back on that default for a string it
+  cannot read, which would open the very window the option was meant to
+  change and say nothing about it, so `parse_camera_rotation()` refuses
+  one against `ROTATION_PATTERN` instead.
 - **`--transparent`** — a cube laid on the desktop, and the one place
   the host reaches around `GlfwHost` rather than under it. The three
   glfw hints it needs are posted *before* `super().open()` runs: hints

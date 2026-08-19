@@ -59,7 +59,7 @@ starts from.
 
 ```
 Usage: cube-cast [-h] -e ENDPOINT [-o ORIENTATION] [-p PALETTE] [-m MODE]
-                 [-w WIDTHxHEIGHT] [-t] [--no-msaa]
+                 [-r ROTATION] [-w WIDTHxHEIGHT] [-t] [--no-msaa]
 
 Watch a cube in 3D, from the term-timer event stream.
 
@@ -76,6 +76,10 @@ Options:
                         Default: the colors of a cube.
   -m MODE, --mode MODE  Show only what a step of the solve is about, e.g. oll.
                         Default: the whole cube.
+  -r ROTATION, --rotation ROTATION
+                        Set the angle the camera looks the cube from,
+                        as AXISDEGREES parts, e.g. y45x-34.
+                        Default: the framing of cubing-algs.
   -w WIDTHxHEIGHT, --window-size WIDTHxHEIGHT
                         Set the size of the window.
                         Default: 400x300.
@@ -93,6 +97,14 @@ takes — and hides what the step says nothing about. What is hidden is
 a mask over what is drawn, never over what is known: the mask is
 settled once and follows the pieces as they turn, so the cube keeps
 being the one the hardware reports.
+
+`--rotation` says where the camera stands when the window opens, as
+the axis and angle parts `python -m cubing_algs apply --rotation`
+takes: `y45x-34` is the framing of the library, `y90x-20` opens on the
+R face, `y0x0` looks the cube straight in the F face. It frames the
+cube rather than turning it — the cube is turned by the hardware
+alone — and `Space` comes back to it, so a window opened on an angle
+stays on it.
 
 The window turns nothing itself. The cubing-algs viewer reads the
 letters of the notation as moves, and this one holds them back: the
