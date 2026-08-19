@@ -37,7 +37,7 @@ WINDOW_SHORTCUTS = """\
 # ships names the keys turning the cube, and a cube turned elsewhere
 # has none of them: what is left is what only looks at it.
 VIEWER_SHORTCUTS = f"""\
-cubecast
+cube-cast
   Drag             Orbit the cube
   Ctrl drag        Carry the window across the screen
 { WINDOW_SHORTCUTS }"""

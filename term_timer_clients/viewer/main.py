@@ -1,4 +1,4 @@
-"""Entry point of the ``cubecast`` client."""
+"""Entry point of the ``cube-cast`` client."""
 import logging
 import sys
 from argparse import ArgumentTypeError
@@ -100,7 +100,7 @@ def build_parser() -> ArgumentParser:
     Describe what the client takes on its command line.
 
     Returns:
-        The parser of the ``cubecast`` arguments.
+        The parser of the ``cube-cast`` arguments.
 
     """
     parser = ArgumentParser(

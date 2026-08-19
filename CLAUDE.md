@@ -47,7 +47,7 @@ Three layers, and the boundaries between them are the point:
   about cubes: frames in, envelopes out. Shared by every client.
   The subscriber *connects* and the publisher *binds*, which is what
   makes start order irrelevant and lets a client come and go.
-- **`viewer/client.py`** — `CubeCast`, the whole of `cubecast`, and it
+- **`viewer/client.py`** — `CubeCast`, the whole of `cube-cast`, and it
   touches neither a socket nor a window. An envelope comes in and a
   viewer method is called: topics are dispatched through a
   `self.handlers` dict. This is where a new topic is handled.

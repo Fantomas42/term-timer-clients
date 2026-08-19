@@ -1,5 +1,5 @@
 """
-Tests for the ``cubecast`` client.
+Tests for the ``cube-cast`` client.
 
 Nothing here opens a window: the client only translates a stream into
 calls on a viewer, so a mocked one - or a real one, which needs no GPU
@@ -173,7 +173,7 @@ def run_main(host: MagicMock, stream: MagicMock) -> int:
         The exit code of the entry point.
 
     """
-    argv = ['cubecast', '-e', ENDPOINT]
+    argv = ['cube-cast', '-e', ENDPOINT]
 
     with (
         patch.object(sys, 'argv', argv),
