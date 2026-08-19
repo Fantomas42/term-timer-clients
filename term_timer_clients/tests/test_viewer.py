@@ -6,12 +6,10 @@ calls on a viewer, so a mocked one - or a real one, which needs no GPU
 until a stage is attached to it - is enough. The captures of
 ``tests/replays/gan_gen2/`` play the part of the cube.
 """
-import json
 import sys
 import unittest
 from dataclasses import replace
 from pathlib import Path
-from typing import Any
 from unittest.mock import MagicMock
 from unittest.mock import create_autospec
 from unittest.mock import patch
@@ -31,6 +29,7 @@ from cubing_algs.display.gl.transforms import Vec3
 from cubing_algs.vcube import VCube
 
 from term_timer_clients.tests.fixtures import envelope
+from term_timer_clients.tests.fixtures import envelopes
 from term_timer_clients.viewer import host as window
 from term_timer_clients.viewer import main as entry
 from term_timer_clients.viewer.assembly import CORE_DURATION
@@ -48,8 +47,6 @@ from term_timer_clients.viewer.client import WINDOW_TITLE
 from term_timer_clients.viewer.client import CubeCast
 from term_timer_clients.viewer.host import TRANSPARENT
 from term_timer_clients.viewer.host import CubeCastHost
-
-REPLAYS = Path(__file__).parent / 'replays' / 'gan_gen2'
 
 ENDPOINT = 'tcp://127.0.0.1:5333'
 
@@ -99,35 +96,6 @@ def mouse_glfw() -> MagicMock:
     return glfw
 
 
-# Topic of every driver event the viewer listens to
-TOPICS = {
-    'facelets': 'cube.facelets',
-    'move': 'cube.move',
-    'move_history': 'cube.history',
-    'gyro': 'cube.gyro',
-    'hardware': 'cube.hardware',
-    'battery': 'cube.battery',
-}
-
-
-def capture(name: str) -> list[dict[str, Any]]:
-    """
-    Read a recorded stream of driver events.
-
-    Args:
-        name: Name of the capture file.
-
-    Returns:
-        The events, as the driver produced them.
-
-    """
-    events: list[dict[str, Any]] = json.loads(
-        (REPLAYS / name).read_text(),
-    )
-
-    return events
-
-
 def replay(view: CubeCast, name: str) -> None:
     """
     Play a capture through the client, event by event.
@@ -137,22 +105,8 @@ def replay(view: CubeCast, name: str) -> None:
         name: Name of the capture file.
 
     """
-    for event in capture(name):
-        topic = TOPICS.get(event['event'])
-
-        if topic is None:
-            continue
-
-        view.dispatch(
-            envelope(
-                topic,
-                {
-                    key: value
-                    for key, value in event.items()
-                    if key != 'event'
-                },
-            ),
-        )
+    for message in envelopes(name):
+        view.dispatch(message)
 
 
 def solved_scene() -> Scene:

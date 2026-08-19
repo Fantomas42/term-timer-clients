@@ -15,6 +15,8 @@ Living here today:
 
 - **`cube-cast`**, a 3D view of the cube, turning and animating in real
   time in a window of its own.
+- **`tt-tail`**, the stream itself, read out loud in a terminal: one
+  block per message, of both planes, formatted and lightly colored.
 
 ## Installation
 
@@ -23,7 +25,8 @@ pip install .
 ```
 
 The 3D view is drawn by [cubing-algs][ca], through moderngl and glfw,
-which come with it.
+which come with it. `tt-tail` needs none of them, and draws with the
+escape sequences of the terminal alone.
 
 [ca]: https://github.com/Fantomas42/cubing-algs
 
@@ -166,13 +169,97 @@ so the cube is antialiased aside and copied in. `--no-msaa` gives that
 detour up and draws straight into the window, aliased but with nothing
 in between — and drops the antialiasing of an ordinary window as well.
 
+## tt-tail
+
+`cube-cast` shows a cube and says nothing of the session around it.
+`tt-tail` says all of it: it subscribes to both planes and writes every
+message down as it arrives, in a block of its own.
+
+```bash
+tt-tail
+```
+
+It reads its endpoint where `cube-cast` reads its own, in the
+`[publisher]` section of the configuration of term-timer, and `-e` is
+required only when nothing configured one.
+
+```
+── session a3f1c8d2 · solve ─────────────────────────────────────────
+┌ 12:04:31.220 · cube.move · +1.204s · Δcube.move 0.512s · #4213
+│ move             R'
+│ serial           42
+│ face             1
+│ direction        0
+│ cube_timestamp   20.370 s
+│ local_timestamp  12:04:31.220
+└
+┌ 12:04:32.001 · session.state · +0.781s · #4214
+│ state     solving
+│ previous  inspected
+│ at        1274839201847
+└
+```
+
+The head of a block says when the message was published, what it is,
+and where it sits in what the publisher counted. The two gaps are what
+the cadence of a solve is read from: `+1.204s` since the block before,
+and `Δcube.move 0.512s` since the block before of that same topic. A
+break in the sequence numbers is a loss, and it is reported on a line
+of its own — nothing else would say that a message was published and
+never read.
+
+Values are written in the unit a reader counts in rather than in the
+one the wire carries: an epoch float becomes a time of day, the
+nanoseconds of a solve or of a record become seconds, the milliseconds
+of a cube become seconds too, and the facelets are spaced out into the
+six faces they describe. What carries something of its own is laid out
+under its name — a quaternion on one line, the steps of a solve as one
+sub-block each — and what is too wide hangs under itself rather than
+running the next field off the screen.
+
+None of this is decided on the topic: a field is shaped by its name and
+by what it holds, so a topic added to the protocol tomorrow is readable
+today. **Every topic is printed, the unknown ones included.** Ignoring
+what it does not know is what a client owes the protocol, but a tail
+that hid the one message its reader opened it for would be of no use to
+anyone.
+
+The gyroscope is the one exception. It publishes tens of times a
+second, and a block each time is a window where nothing else can be
+seen, so it is held back — `--all` gives it up. What it hid is still
+counted: a loss behind a message never printed is reported all the
+same.
+
+```
+Usage: tt-tail [-h] -e ENDPOINT [-a] [--no-color]
+
+Read the term-timer event stream as it goes by.
+
+Options:
+  -h, --help            Show this help message and exit.
+  -e ENDPOINT, --endpoint ENDPOINT
+                        Connect to this ZeroMQ endpoint, one of those the
+                        [publisher] section of the configuration binds.
+                        Default: the first one it binds.
+  -a, --all             Show every message, the gyroscope included.
+                        Default: False.
+  --no-color            Write the stream without any color, as it already is
+                        when the output is not a terminal or NO_COLOR is set.
+                        Default: False.
+```
+
+The colors go out on their own when the output is not a terminal, and
+`NO_COLOR` is answered too, so `tt-tail > session.log` writes text and
+nothing else. Every block is flushed as it is written: a tail left to
+its own buffering is a tail that says nothing for pages at a time.
+
 ## Writing another client
 
 Everything a client needs is in [PROTOCOL.md](PROTOCOL.md), and a
-useful one is short: a tail of the stream, a recorder writing down what
-it hears, a bridge to a WebSocket overlay, a script announcing personal
-bests. `term_timer_clients/protocol.py` holds what they share — the
-envelope, the endpoints, and a subscription read in a thread — and
+useful one is short: a recorder writing down what it hears, a bridge to
+a WebSocket overlay, a script announcing personal bests.
+`term_timer_clients/protocol.py` holds what they share — the envelope,
+the endpoints, and a subscription read in a thread — and
 `term_timer_clients/config.py` reads the configuration of term-timer,
 so that a client is configured where the session is.
 
@@ -186,5 +273,6 @@ mypy term_timer_clients --strict
 pytest term_timer_clients --cov=term_timer_clients
 ```
 
-The suite needs neither a GPU nor a cube: it plays recorded captures
-into a mocked viewer, and real sockets on a real thread for the stream.
+The suite needs neither a GPU, a cube nor a terminal: it plays recorded
+captures into a mocked viewer and into a reader writing to a list, and
+real sockets on a real thread for the stream.

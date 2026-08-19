@@ -15,19 +15,18 @@ from cubing_algs.display.palettes import PALETTES
 from cubing_algs.exceptions import CubingAlgsError
 from cubing_algs.vcube import VCube
 
+from term_timer_clients.argparser import LOG_FORMAT
 from term_timer_clients.argparser import ArgumentParser
+from term_timer_clients.argparser import add_endpoint_argument
 from term_timer_clients.config import Config
 from term_timer_clients.config import configured_cube
 from term_timer_clients.config import configured_endpoint
 from term_timer_clients.config import load_config
 from term_timer_clients.protocol import EventStream
-from term_timer_clients.protocol import parse_endpoint
 from term_timer_clients.viewer.client import CubeCast
 from term_timer_clients.viewer.host import CubeCastHost
 
 logger = logging.getLogger(__name__)
-
-LOG_FORMAT = '%(levelname)s: %(message)s'
 
 DEFAULT_WINDOW_SIZE = (400, 300)
 
@@ -51,38 +50,6 @@ DEFAULT_MODE = ''
 # opened with, and a window opened turned would be lost on the first
 # reset otherwise
 DEFAULT_ROTATION = ''
-
-
-def parse_stream_endpoint(value: str) -> str:
-    """
-    Read the endpoint of the stream a ``--endpoint`` argument names.
-
-    The endpoint goes through what the publisher reads its own with, so
-    that a tilde written on the command line points at the same socket
-    as the one written in the configuration.
-
-    Args:
-        value: The argument, as it was typed.
-
-    Returns:
-        The endpoint to connect to.
-
-    Raises:
-        ArgumentTypeError: When the argument names no transport. A
-            subscriber given a broken endpoint would wait in silence
-            forever, so it is refused here.
-
-    """
-    endpoint = parse_endpoint(value)
-
-    if not endpoint:
-        msg = (
-            f'"{ value }" is not an endpoint, '
-            f'expected TRANSPORT://ADDRESS'
-        )
-        raise ArgumentTypeError(msg)
-
-    return endpoint
 
 
 def configured_choice(
@@ -207,20 +174,8 @@ def build_parser(config: Config) -> ArgumentParser:
         palettes,
     )
 
-    # Required only when the configuration names no endpoint: what is
-    # missing then is the stream itself, and argparse is what says so
-    parser.add_argument(
-        '-e', '--endpoint',
-        required=not endpoint,
-        default=endpoint,
-        type=parse_stream_endpoint,
-        metavar='ENDPOINT',
-        help=(
-            'Connect to this ZeroMQ endpoint, one of those the\n'
-            '[publisher] section of the configuration binds.\n'
-            f'Default: { endpoint or "the first one it binds" }'
-        ),
-    )
+    add_endpoint_argument(parser, endpoint)
+
     parser.add_argument(
         '-o', '--orientation',
         default=orientation,

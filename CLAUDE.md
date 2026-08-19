@@ -120,6 +120,36 @@ Three layers, and the boundaries between them are the point:
   the color comes in and a lit core is handed the very look it came
   with; `Assembly.elapsed` is its clock, wrapped on `PULSE_PERIOD` so
   a window nobody closes never counts a night into a float.
+- **`tail/client.py` / `tail/render.py` / `tail/ansi.py`** — `tt-tail`,
+  the stream read out loud. `StreamTail` holds no cube and imports
+  nothing of cubing-algs: what arrives is what is shown, and the only
+  state it keeps — the previous stamp, the one per topic, the sequence
+  number — belongs to the reading rather than to the cube. The split
+  is the one `viewer/` is made of: `render.py` turns an envelope into
+  lines and touches no terminal, `client.py` decides what is written
+  and hands the lines to an injected writer, and `main.py` is the only
+  thing that knows about `sys.stdout`. **A field is shaped by its name
+  and by its type, never by the topic it arrived under** — that is
+  what makes a topic added tomorrow readable today, and it is why
+  `CLOCK_FIELDS` and its neighbours are keyed on field names rather
+  than on a table per topic. For the same reason **every topic is
+  printed, the unknown ones included**: ignoring what it does not know
+  is what a client owes the protocol, and the viewer does exactly
+  that, but a tail hiding the one message its reader opened it for
+  would be of no use. `QUIET_TOPICS` is the single exception, and it
+  is about cadence rather than about meaning — the gyroscope publishes
+  tens of times a second, and `--all` gives it up. A message held back
+  is still counted in the sequence, so a loss it hid is reported
+  rather than blamed on the topic that comes next; the two prefixes
+  cover everything the publisher emits, which is what makes a break in
+  `seq` a loss at all. The gaps are measured on **what is printed**,
+  not on what arrived: a cadence counting invisible messages would say
+  nothing about the blocks being read. Colors are asked for the same
+  way whether or not any are worn — a disabled `Paint` hands its text
+  back untouched — so the rendering has one shape, and the whole suite
+  asserts on bare text; wrapping is measured on the bare text and the
+  color worn by each piece afterwards, an escape being counted as a
+  column by anything that counts characters.
 - **`viewer/main.py` / `viewer/host.py`** — the entry point assembles
   window, viewer and stream; `CubeCastHost` extends the cubing-algs
   `GlfwHost` with a window title, and takes the keyboard moves back
@@ -168,9 +198,16 @@ Three layers, and the boundaries between them are the point:
   read a context off the other one — and refuses a window outright on
   a platform that stayed Wayland.
 
-The threading split is deliberate and constrains where things may be
-done: the stream thread pushes moves the moment they arrive (the
-animation reads its cadence from that), while glfw demands its window
+`tt-tail` reads the stream in the main thread — `stream.receive()` in a
+loop rather than `stream.start()` — because nothing here needs that
+thread for itself. One reader and one writer means no lock, and
+`STREAM_POLL_TIMEOUT` is what a `Ctrl-C` costs. `cube-cast` is the
+other case, and the reason is glfw rather than taste.
+
+The threading split of the viewer is deliberate and constrains where
+things may be done: the stream thread pushes moves the moment they
+arrive (the animation reads its cadence from that), while glfw demands
+its window
 be handled from the thread that opened it. So the stream only ever
 mutates state — `CubeCast.title` — and the window picks it up at the
 next `frame()`.
@@ -204,10 +241,17 @@ go through `CubeCast.translate()` before being pushed.
 ## Adding a client
 
 Put shared stream code in `protocol.py`, keep the client itself free of
-sockets and windows, add a `[project.scripts]` entry point. A client
-subscribes to the prefixes it needs (`CUBE_PREFIX`, `SESSION_PREFIX`) —
-ZeroMQ filters by prefix, and no complete topic name is a prefix of
-another, which is why the move catch-up is `cube.history` and not
+sockets and windows, add a `[project.scripts]` entry point. What is
+shared by the *command lines* rather than by the stream lives in
+`argparser.py`: `LOG_FORMAT`, `parse_stream_endpoint()` and
+`add_endpoint_argument()`, so that every client is pointed at the
+stream by the same option with the same help rather than by a copy of
+it that will drift.
+
+A client subscribes to the prefixes it needs (`CUBE_PREFIX`,
+`SESSION_PREFIX`) — ZeroMQ filters by prefix, and no complete topic
+name is a prefix of another, which is why the move catch-up is
+`cube.history` and not
 `cube.move_history`.
 
 ## Tests
@@ -220,13 +264,20 @@ tested without hardware. `test_protocol.py` uses real ZeroMQ sockets on
 a real thread instead of mocking the transport.
 
 `tests/fixtures.py::envelope()` builds a message as the publisher
-writes it; use it rather than hand-writing dicts.
+writes it; use it rather than hand-writing dicts. `TOPICS`, `capture()`
+and `envelopes()` live there too rather than in the suite of one
+client: two copies of what a capture means would be two answers the day
+a topic is renamed. `test_tail.py` writes into a list and keeps the
+colors off, an escape counted as a column being a block nothing can
+assert on.
 
 ## Style
 
 Enforced by ruff, but worth knowing before writing: single quotes,
 line length 80, one import per line (`force-single-line`), spaced
-f-string braces (`f'{ value }%'`), Google-style docstrings on
+f-string braces (`f'{ value }%'`) — which a format spec makes
+impossible, the trailing space landing inside it, so those go through
+`format(value, '.3f')` instead — Google-style docstrings on
 everything public — including `Args:` and `Returns:`. Comments in this
 codebase explain *why* a constraint exists, not what a line does; match
 that register.

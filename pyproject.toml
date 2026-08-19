@@ -34,6 +34,7 @@ dev = [
 
 [project.scripts]
 cube-cast = "term_timer_clients.viewer.main:main"
+tt-tail = "term_timer_clients.tail.main:main"
 
 [tool.setuptools.packages.find]
 include = ["term_timer_clients*"]
