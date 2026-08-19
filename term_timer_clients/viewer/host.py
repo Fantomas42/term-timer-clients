@@ -9,7 +9,6 @@ from cubing_algs.display.gl.context import GLFWWindow
 from cubing_algs.display.gl.context import has_glfw
 from cubing_algs.display.gl.host import GlfwHost
 from cubing_algs.display.gl.renderer import OffscreenTarget
-from cubing_algs.display.gl.viewer import resolve_orientation
 
 from term_timer_clients.viewer.assembly import Assembly
 from term_timer_clients.viewer.client import CubeCast
@@ -80,12 +79,13 @@ class CubeCastHost(GlfwHost):
     decorated window answers too, where it merely doubles its bar.
 
     ``assembly`` is where the pieces of the cube stand between the
-    floor and the core: a cube nobody is connected to lies out of the
-    window and leaves the ball core alone in it, and one that has
-    described itself gathers around it. The core is moved by the link
-    instead, and the two are handed over apart - a cube announces
-    itself long before it says what it looks like, and the ball is
-    what answers the link while the pieces wait for a state. The
+    core and the far end of their rays: a cube nobody is connected to
+    is blown out of the window and leaves the ball core alone in it,
+    and one that has described itself implodes around it. The core
+    is moved by the link instead, and the two are handed over apart -
+    a cube announces itself long before it says what it looks like,
+    and the ball is what answers the link while the pieces wait for a
+    state. The
     effect is layered on the very seam the viewer documents for it, so
     a frame with no cube to show costs a scene with no piece in it.
 
@@ -116,10 +116,10 @@ class CubeCastHost(GlfwHost):
     carrying: bool = field(init=False, default=False)
     anchor: tuple[float, float] = field(init=False, default=(0.0, 0.0))
 
-    # Where the pieces of the cube stand between the floor and the
-    # core. It starts on the floor: a window opens on a stream that has
-    # said nothing yet, and a cube nobody has described is a cube that
-    # is not there.
+    # Where the pieces of the cube stand between the core and the far
+    # end of their rays. It starts blown apart: a window opens on a
+    # stream that has said nothing yet, and a cube nobody has described
+    # is a cube that is not there.
     assembly: Assembly = field(init=False, default_factory=Assembly)
 
     @property
@@ -298,7 +298,6 @@ class CubeCastHost(GlfwHost):
         """
         drawn = self.assembly.advance(
             self.viewer.advance(delta),
-            resolve_orientation(self.viewer.orientation),
             present=self.view.present,
             linked=self.view.connected,
             delta=delta,

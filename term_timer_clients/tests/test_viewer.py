@@ -7,7 +7,6 @@ until a stage is attached to it - is enough. The captures of
 ``tests/replays/gan_gen2/`` play the part of the cube.
 """
 import json
-import math
 import sys
 import unittest
 from dataclasses import replace
@@ -27,9 +26,7 @@ from cubing_algs.display.gl.context import GLContextError
 from cubing_algs.display.gl.host import GlfwHost
 from cubing_algs.display.gl.scene import CubieInstance
 from cubing_algs.display.gl.scene import Scene
-from cubing_algs.display.gl.transforms import IDENTITY
 from cubing_algs.display.gl.transforms import ORIGIN
-from cubing_algs.display.gl.transforms import Quat
 from cubing_algs.display.gl.transforms import Vec3
 from cubing_algs.vcube import VCube
 
@@ -38,11 +35,10 @@ from term_timer_clients.viewer import host as window
 from term_timer_clients.viewer import main as entry
 from term_timer_clients.viewer.assembly import CORE_DURATION
 from term_timer_clients.viewer.assembly import DORMANT_CORE
-from term_timer_clients.viewer.assembly import FALL_DURATION
-from term_timer_clients.viewer.assembly import MAGNET_DURATION
+from term_timer_clients.viewer.assembly import EXPLOSION_DURATION
+from term_timer_clients.viewer.assembly import IMPLOSION_DURATION
 from term_timer_clients.viewer.assembly import PULSE_CORE
 from term_timer_clients.viewer.assembly import PULSE_PERIOD
-from term_timer_clients.viewer.assembly import STAGGER
 from term_timer_clients.viewer.assembly import Assembly
 from term_timer_clients.viewer.assembly import Flight
 from term_timer_clients.viewer.assembly import breath
@@ -548,48 +544,46 @@ class CubeLinkTestCase(ClientTestCase):
         self.assertTrue(self.viewer.cube.is_solved)
 
 
-def screen_place(instance: CubieInstance, orientation: Quat) -> Vec3:
+def cube_place(instance: CubieInstance) -> Vec3:
     """
-    Tell where a piece stands in the window, the cube held as it is.
+    Tell where a piece stands, wherever the blast has taken it.
 
     Args:
         instance: The piece to locate.
-        orientation: How the whole cube is held, which the shader
-            applies on top of the model of a piece.
 
     Returns:
-        The center of the piece, in the frame of the window.
+        The center of the piece, in the frame of the cube.
 
     """
-    return orientation.to_matrix().transform_point(
-        instance.model.transform_point(ORIGIN),
-    )
+    return instance.model.transform_point(ORIGIN)
 
 
 class AssemblyTestCase(unittest.TestCase):
-    """The cube gathering around its core, and letting go of it."""
+    """The cube imploding around its core, and exploding away from it."""
 
     def test_a_cube_gathers_in_a_bounded_time(self) -> None:
-        """A cube that arrives is whole once the magnet is done."""
+        """A cube that arrives is whole once the implosion is done."""
         assembly = Assembly()
 
-        assembly.settle(present=True, linked=True, delta=MAGNET_DURATION / 2)
+        assembly.settle(
+            present=True, linked=True, delta=IMPLOSION_DURATION / 2,
+        )
 
         self.assertAlmostEqual(assembly.progress, 0.5)
-        self.assertTrue(assembly.rising)
 
-        assembly.settle(present=True, linked=True, delta=MAGNET_DURATION)
+        assembly.settle(present=True, linked=True, delta=IMPLOSION_DURATION)
 
         self.assertEqual(assembly.progress, 1.0)
 
-    def test_a_cube_that_left_stops_at_the_floor(self) -> None:
-        """A cube that falls never falls past the floor."""
-        assembly = Assembly(progress=1.0, rising=True)
+    def test_a_cube_that_left_is_blown_all_the_way_out(self) -> None:
+        """A cube that explodes is never half thrown out for good."""
+        assembly = Assembly(progress=1.0)
 
-        assembly.settle(present=False, linked=False, delta=FALL_DURATION * 2)
+        assembly.settle(
+            present=False, linked=False, delta=EXPLOSION_DURATION * 2,
+        )
 
         self.assertEqual(assembly.progress, 0.0)
-        self.assertFalse(assembly.rising)
 
     def test_a_frame_going_backwards_moves_nothing(self) -> None:
         """A clock that went back leaves the assembly where it was."""
@@ -604,76 +598,101 @@ class AssemblyTestCase(unittest.TestCase):
         """A cube that is all there costs the effect nothing at all."""
         scene = solved_scene()
 
-        self.assertIs(
-            Assembly(progress=1.0, rising=True).apply(scene, IDENTITY),
-            scene,
-        )
+        self.assertIs(Assembly(progress=1.0).apply(scene), scene)
 
     def test_a_cube_that_is_not_there_has_no_piece(self) -> None:
         """A disconnected cube leaves the ball core alone in the window."""
         scene = solved_scene()
         assembly = Assembly()
 
-        empty = assembly.apply(scene, IDENTITY)
+        empty = assembly.apply(scene)
 
         self.assertEqual(empty.instances, ())
-        self.assertIs(assembly.apply(scene, IDENTITY), empty)
+        self.assertIs(assembly.apply(scene), empty)
 
     def test_every_piece_is_still_drawn_in_flight(self) -> None:
         """A cube on its way keeps all of its pieces."""
         scene = solved_scene()
 
-        flying = Assembly(progress=0.5, rising=True).apply(scene, IDENTITY)
+        flying = Assembly(progress=0.5).apply(scene)
 
         self.assertEqual(len(flying.instances), len(scene.instances))
 
-    def test_pieces_fall_down_the_window_however_the_cube_is_held(
-            self,
-    ) -> None:
-        """The floor is the floor of the screen, not the D face."""
+    def test_a_piece_only_ever_travels_its_own_ray(self) -> None:
+        """A blast leaves the core, and nothing crosses the middle."""
         scene = solved_scene()
-        held = Quat.from_axis_angle(Vec3(0.0, 0.0, 1.0), math.pi / 3)
 
-        # Halfway through the travel of the piece that leads, so that
-        # not one of them has landed whatever the stagger is set to
-        falling = Assembly(
-            progress=(1.0 - STAGGER) / 2, rising=False,
-        ).apply(scene, held)
+        flying = Assembly(progress=0.5).apply(scene)
 
-        for resting, flying in zip(
-                scene.instances, falling.instances, strict=True,
+        for resting, flown in zip(
+                scene.instances, flying.instances, strict=True,
         ):
-            place = screen_place(resting, held)
-            flight = screen_place(flying, held)
+            place = cube_place(resting)
+            flight = cube_place(flown)
 
-            self.assertAlmostEqual(flight.x, place.x)
-            self.assertAlmostEqual(flight.z, place.z)
-            self.assertLess(flight.y, place.y)
+            # Still on the ray it belongs to: the cross product of the
+            # two is nothing at all, and the dot product is positive
+            self.assertAlmostEqual(place.cross(flight).length(), 0.0)
+            self.assertGreater(place.dot(flight), 0.0)
+            self.assertGreater(flight.length(), place.length())
 
-    def test_the_lowest_pieces_are_the_first_to_gather(self) -> None:
-        """A cube builds up from the floor rather than in one block."""
-        flight = Flight(
-            world=IDENTITY.to_matrix(),
-            unworld=IDENTITY.to_matrix(),
-            floor=3.0,
-            reach=1.0,
-            progress=0.5,
-            rising=True,
-        )
+    def test_a_piece_goes_out_as_it_goes_away(self) -> None:
+        """One ray points at the camera: nothing may loom over the core."""
+        scene = solved_scene()
 
-        self.assertGreater(flight.phase(-1.0), flight.phase(1.0))
+        flying = Assembly(progress=0.5).apply(scene)
 
-    def test_a_cube_falls_the_same_way_twice(self) -> None:
+        for flown in flying.instances:
+            self.assertLess(
+                flown.model.transform_direction(
+                    Vec3(1.0, 0.0, 0.0),
+                ).length(),
+                1.0,
+            )
+
+    def test_no_piece_is_ever_driven_into_another(self) -> None:
+        """The shells keep their order, so nothing goes through anything."""
+        scene = solved_scene()
+
+        for progress in (0.1, 0.3, 0.5, 0.7, 0.9):
+            flying = Assembly(progress=progress).apply(scene)
+
+            shells: dict[float, set[float]] = {}
+
+            for resting, flown in zip(
+                    scene.instances, flying.instances, strict=True,
+            ):
+                shells.setdefault(
+                    round(cube_place(resting).length(), 6), set(),
+                ).add(round(cube_place(flown).length(), 6))
+
+            thrown = []
+
+            for _radius, shell in sorted(shells.items()):
+                # A shell leaves in one piece: what a piece is handed
+                # is read off its distance to the core alone
+                self.assertEqual(len(shell), 1)
+
+                thrown.append(shell.pop())
+
+            # An outer shell is never less thrown out than the one it
+            # covers, at any moment of the blast
+            self.assertEqual(thrown, sorted(thrown))
+            self.assertEqual(len(set(thrown)), len(thrown))
+
+    def test_the_innermost_pieces_are_the_first_to_gather(self) -> None:
+        """A blast runs through the cube rather than moving it in one block."""
+        flight = Flight(reach=1.0, progress=0.5)
+
+        self.assertGreater(flight.phase(0.5), flight.phase(1.0))
+
+    def test_a_cube_blows_apart_the_same_way_twice(self) -> None:
         """What a piece is turned by in flight is drawn from itself."""
         scene = solved_scene()
 
         self.assertEqual(
-            Assembly(progress=0.5, rising=True).apply(
-                scene, IDENTITY,
-            ).instances,
-            Assembly(progress=0.5, rising=True).apply(
-                scene, IDENTITY,
-            ).instances,
+            Assembly(progress=0.5).apply(scene).instances,
+            Assembly(progress=0.5).apply(scene).instances,
         )
 
     def test_two_pieces_do_not_turn_alike(self) -> None:
@@ -698,8 +717,8 @@ class AssemblyTestCase(unittest.TestCase):
         assembly = Assembly()
 
         drawn = assembly.advance(
-            scene, IDENTITY,
-            present=True, linked=True, delta=MAGNET_DURATION,
+            scene,
+            present=True, linked=True, delta=IMPLOSION_DURATION,
         )
 
         self.assertEqual(assembly.progress, 1.0)
@@ -718,7 +737,7 @@ class CoreTintTestCase(unittest.TestCase):
     def test_a_lit_core_keeps_the_look_it_was_handed(self) -> None:
         """A connected viewer draws the picture cubing-algs describes."""
         self.assertIs(
-            Assembly(progress=1.0, rising=True, glow=1.0).tint(DEFAULT_LOOK),
+            Assembly(progress=1.0, glow=1.0).tint(DEFAULT_LOOK),
             DEFAULT_LOOK,
         )
 
@@ -786,9 +805,11 @@ class CoreTintTestCase(unittest.TestCase):
 
     def test_a_core_goes_out_with_the_pieces_falling(self) -> None:
         """A cube goes away in one gesture where it arrives in two."""
-        assembly = Assembly(progress=1.0, rising=True, glow=1.0)
+        assembly = Assembly(progress=1.0, glow=1.0)
 
-        assembly.settle(present=False, linked=False, delta=FALL_DURATION / 2)
+        assembly.settle(
+            present=False, linked=False, delta=EXPLOSION_DURATION / 2,
+        )
 
         self.assertAlmostEqual(assembly.glow, assembly.progress)
 

@@ -72,11 +72,10 @@ one when term-timer is restarted, and can be closed and reopened
 without the session ever noticing.
 
 A window that opens on a cube nobody has described yet shows the ball
-core alone, the pieces of the cube lying on the floor out of the frame.
-They gather around the core the moment a cube connects and says what it
-looks like, and they let go and fall back down when the link drops —
-the state underneath is kept, and it is the one the next connection
-starts from.
+core alone, the pieces of the cube blown out of the frame. They implode
+around the core the moment a cube connects and says what it looks like,
+and they are blasted away from it again when the link drops — the state
+underneath is kept, and it is the one the next connection starts from.
 
 ```
 Usage: cube-cast [-h] [-e ENDPOINT] [-o ORIENTATION] [-p PALETTE] [-m MODE]

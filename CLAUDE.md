@@ -65,8 +65,8 @@ Three layers, and the boundaries between them are the point:
   touches neither a socket nor a window. An envelope comes in and a
   viewer method is called: topics are dispatched through a
   `self.handlers` dict. This is where a new topic is handled.
-- **`viewer/assembly.py`** — the pieces of the cube gathering around
-  the ball core, and falling back to the floor when the link drops.
+- **`viewer/assembly.py`** — the pieces of the cube imploding around
+  the ball core, and exploding away from it when the link drops.
   Pure: a scene comes in, a scene comes out, its pieces moved, and it
   is layered on the seam `Viewer` documents for an effect —
   `CubeCastHost.frame()` takes `advance()` and `draw()` apart and
@@ -74,14 +74,28 @@ Three layers, and the boundaries between them are the point:
   nothing leaks into the camera the mouse writes to. A cube nobody is
   connected to is handed over with no instance at all: the core is
   drawn before them and on its own, so it is what stays in the window.
-  **The floor is the floor of the screen**: the shader draws a piece
-  at `world * model`, so a drop written into the model alone would
-  fall towards the D face — it is framed by the orientation and undone
-  by its conjugate instead. `CubeCast.present` is what moves it: a
-  cube connected *and* described. Gathering on the link alone would
-  pick a solved cube up and repaint it in mid air a moment later, and
-  gathering on a state alone would leave the colors of a cube nobody
-  is connected to any more hanging in the window. **The core is not
+  **A piece only ever travels its own ray**, the one leaving the core
+  through the place it belongs to, and that is the whole of why
+  nothing collides: two rays leaving the same point never meet again,
+  and the ball core sits at the point they leave. The shells are
+  ranked by their distance to the core rather than by their height on
+  the screen (`SHOCKWAVE`), so an outer piece is never less thrown out
+  than the one it covers and the blast runs through the cube instead
+  of moving it in one block — centers first on the way in, corners
+  first on the way out. `blast()` is one cubic read both ways, and it
+  never goes past one at either end: an overshoot would take a piece
+  inside its own place, and inside a cube every place is taken. None
+  of this is held in the frame of the window, which is why no
+  orientation is passed here at all: a blast leaves the core in every
+  direction at once. A piece is also drawn at the very share of its
+  travel it has covered (`shrink()`), because one ray points at the
+  camera: drawn whole, the piece on it would loom over the core it is
+  leaving and blink out at the end of the blast. `CubeCast.present`
+  is what moves it: a cube connected *and* described. Gathering on
+  the link alone would
+  pick a solved cube up and repaint it in mid air a moment later,
+  and gathering on a state alone would leave the colors of a cube
+  nobody is connected to any more hanging in the window. **The core is not
   on that clock**: `Assembly.glow` is moved by `CubeCast.connected`
   alone, over `CORE_DURATION`, while `Assembly.progress` carries the
   pieces. Two events, two effects — a link and a state are published
@@ -93,10 +107,10 @@ Three layers, and the boundaries between them are the point:
   through `look.core_color`, which the `look=` of `Viewer.draw()`
   carries and which **cubing-algs holds since the `Look` field of the
   same name**: the `>=` of `pyproject.toml` is what says so, and it
-  has to name the release that added it. Only the fall is shared —
-  `glow` goes out on `FALL_DURATION` with the pieces, a cube going
-  away being one gesture where it arrives in two. A dormant ball also
-  **breathes**, obsidian to a dark red and back (`DORMANT_CORE` to
+  has to name the release that added it. Only the blast is shared —
+  `glow` goes out on `EXPLOSION_DURATION` with the pieces, a cube
+  going away being one gesture where it arrives in two. A dormant
+  ball also **breathes**, obsidian to a dark red and back (`DORMANT_CORE` to
   `PULSE_CORE`), `core_rim_strength` swelling on the same cosine: a
   still picture says nothing of whether the viewer is waiting or has
   stopped, and the wait is what has to be seen. Both ends of the
