@@ -38,11 +38,32 @@ active = true
 endpoints = ["ipc://~/.term_timer/cube.ipc"]
 ```
 
-Then, in a terminal of its own, connect a window to it:
+Then, in a terminal of its own, open a window on it:
 
 ```bash
-cube-cast -e ipc://~/.term_timer/cube.ipc
+cube-cast
 ```
+
+The configuration of term-timer is where the client reads its own
+defaults: the first endpoint the `[publisher]` section binds is the one
+it connects to, and `[cube]` says how the cube is oriented and painted.
+The file is looked up as term-timer looks it up — `TERM_TIMER_CONFIG`,
+or `config.toml` in `TERM_TIMER_HOME`, or `~/.term_timer/config.toml` —
+so a window shows the very cube the terminal next to it shows, with
+nothing typed twice.
+
+Nothing of it is compulsory. Every setting is one option away, and the
+option wins:
+
+```bash
+cube-cast -e ipc://~/.term_timer/cube.ipc -p dracula
+```
+
+A term-timer that was never configured — or a client run on another
+machine than the session — leaves `-e` required, there being no stream
+to be found otherwise. A palette or an orientation this client cannot
+draw is dropped with a warning rather than refused: the file belongs to
+term-timer, and a client ignores what it does not know.
 
 Any command that talks to a cube feeds it — `solve`, `train`, `ghost`,
 `daily`, `bt-info` — and so does a replay. Nothing has to be started in
@@ -58,7 +79,7 @@ the state underneath is kept, and it is the one the next connection
 starts from.
 
 ```
-Usage: cube-cast [-h] -e ENDPOINT [-o ORIENTATION] [-p PALETTE] [-m MODE]
+Usage: cube-cast [-h] [-e ENDPOINT] [-o ORIENTATION] [-p PALETTE] [-m MODE]
                  [-r ROTATION] [-w WIDTHxHEIGHT] [-t] [--no-msaa]
 
 Watch a cube in 3D, from the term-timer event stream.
@@ -68,6 +89,7 @@ Options:
   -e ENDPOINT, --endpoint ENDPOINT
                         Connect to this ZeroMQ endpoint, one of those the
                         [publisher] section of the configuration binds.
+                        Default: the first one it binds.
   -o ORIENTATION, --orientation ORIENTATION
                         Set the cube orientation used.
                         Default: the faces the cube is held by.
@@ -151,7 +173,9 @@ Everything a client needs is in [PROTOCOL.md](PROTOCOL.md), and a
 useful one is short: a tail of the stream, a recorder writing down what
 it hears, a bridge to a WebSocket overlay, a script announcing personal
 bests. `term_timer_clients/protocol.py` holds what they share — the
-envelope, the endpoints, and a subscription read in a thread.
+envelope, the endpoints, and a subscription read in a thread — and
+`term_timer_clients/config.py` reads the configuration of term-timer,
+so that a client is configured where the session is.
 
 ## Development
 

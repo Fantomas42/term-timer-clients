@@ -57,6 +57,19 @@ REPLAYS = Path(__file__).parent / 'replays' / 'gan_gen2'
 
 ENDPOINT = 'tcp://127.0.0.1:5333'
 
+# A configuration as term-timer writes it, cut down to what a client
+# of the stream reads in it
+CONFIG = {
+    'publisher': {
+        'active': True,
+        'endpoints': [ENDPOINT],
+    },
+    'cube': {
+        'orientation': 'DF',
+        'palette': 'dracula',
+    },
+}
+
 # A cube describing itself, which is what a client waits for before it
 # shows one at all
 FACELETS = VCube().state
@@ -175,8 +188,11 @@ def run_main(host: MagicMock, stream: MagicMock) -> int:
     """
     argv = ['cube-cast', '-e', ENDPOINT]
 
+    # The configuration of a machine running the tests is never read:
+    # what the client is given here is its command line and nothing else
     with (
         patch.object(sys, 'argv', argv),
+        patch.object(entry, 'load_config', return_value={}),
         patch.object(entry, 'build_host', return_value=host),
         patch.object(entry, 'EventStream', return_value=stream),
     ):
@@ -1322,7 +1338,7 @@ class MainTestCase(unittest.TestCase):
 
     def test_help_is_formatted(self) -> None:
         """The help of the client is written the way term-timer writes it."""
-        help_text = entry.build_parser().format_help()
+        help_text = entry.build_parser({}).format_help()
 
         self.assertIn('Usage:', help_text)
         self.assertIn('Connect to this ZeroMQ endpoint', help_text)
@@ -1336,7 +1352,7 @@ class MainTestCase(unittest.TestCase):
         """An argument naming no size stops the client."""
         for value in ('1024', '1024x', 'wide x tall', ''):
             with self.subTest(value=value), self.assertRaises(SystemExit):
-                entry.build_parser().parse_args(['-e', ENDPOINT, '-w', value])
+                entry.build_parser({}).parse_args(['-e', ENDPOINT, '-w', value])
 
     def test_parse_camera_rotation(self) -> None:
         """A rotation naming its axes and their angles is taken as is."""
@@ -1347,16 +1363,16 @@ class MainTestCase(unittest.TestCase):
         """A rotation cubing-algs would silently drop stops the client."""
         for value in ('y', '45', 'y45x', 'top', 'y45 x-34'):
             with self.subTest(value=value), self.assertRaises(SystemExit):
-                entry.build_parser().parse_args(['-e', ENDPOINT, '-r', value])
+                entry.build_parser({}).parse_args(['-e', ENDPOINT, '-r', value])
 
     def test_endpoint_is_required(self) -> None:
         """A client with no endpoint has nothing to listen to."""
         with self.assertRaises(SystemExit):
-            entry.build_parser().parse_args([])
+            entry.build_parser({}).parse_args([])
 
     def test_endpoint_ipc_path_expanded(self) -> None:
         """A tilde on the command line is the home the publisher binds."""
-        options = entry.build_parser().parse_args(
+        options = entry.build_parser({}).parse_args(
             ['-e', 'ipc://~/.term_timer/cube.ipc'],
         )
 
@@ -1369,11 +1385,11 @@ class MainTestCase(unittest.TestCase):
         """An endpoint naming no transport stops the client."""
         for value in ('cube.ipc', '~/.term_timer/cube.ipc', 'ipc://', ''):
             with self.subTest(value=value), self.assertRaises(SystemExit):
-                entry.build_parser().parse_args(['-e', value])
+                entry.build_parser({}).parse_args(['-e', value])
 
     def test_build_host(self) -> None:
         """The options of the client reach the viewer it builds."""
-        options = entry.build_parser().parse_args(
+        options = entry.build_parser({}).parse_args(
             [
                 '-e', ENDPOINT, '-o', 'DF', '-w', '640x480',
                 '-m', 'oll', '-r', 'y90x-20',
@@ -1392,7 +1408,7 @@ class MainTestCase(unittest.TestCase):
 
     def test_build_host_without_antialiasing(self) -> None:
         """A cube asked for aliased is drawn into the window itself."""
-        options = entry.build_parser().parse_args(
+        options = entry.build_parser({}).parse_args(
             ['-e', ENDPOINT, '-t', '--no-msaa'],
         )
 
@@ -1401,6 +1417,64 @@ class MainTestCase(unittest.TestCase):
         self.assertTrue(host.transparent)
         self.assertFalse(host.msaa)
         self.assertFalse(host.offscreen)
+
+    def test_configuration_carries_the_defaults(self) -> None:
+        """What term-timer was configured with is what the client opens on."""
+        options = entry.build_parser(CONFIG).parse_args([])
+
+        self.assertEqual(options.endpoint, ENDPOINT)
+        self.assertEqual(options.orientation, 'DF')
+        self.assertEqual(options.palette, 'dracula')
+
+    def test_command_line_wins_over_the_configuration(self) -> None:
+        """An option typed is what the window opens on, configured or not."""
+        options = entry.build_parser(CONFIG).parse_args(
+            ['-e', 'tcp://127.0.0.1:5334', '-o', 'UF', '-p', 'neon'],
+        )
+
+        self.assertEqual(options.endpoint, 'tcp://127.0.0.1:5334')
+        self.assertEqual(options.orientation, 'UF')
+        self.assertEqual(options.palette, 'neon')
+
+    def test_configured_endpoint_is_the_first_one_bound(self) -> None:
+        """A publisher binding several endpoints is connected to on one."""
+        options = entry.build_parser(
+            {
+                'publisher': {
+                    'endpoints': [
+                        'cube.ipc',
+                        'ipc://~/.term_timer/cube.ipc',
+                        ENDPOINT,
+                    ],
+                },
+            },
+        ).parse_args([])
+
+        self.assertEqual(
+            options.endpoint,
+            f'ipc://{ Path.home() }/.term_timer/cube.ipc',
+        )
+
+    def test_configured_taste_unknown_here_is_dropped(self) -> None:
+        """A palette this client cannot draw never stops the window."""
+        with self.assertLogs('term_timer_clients.viewer.main', 'WARNING'):
+            options = entry.build_parser(
+                {
+                    'publisher': {'endpoints': [ENDPOINT]},
+                    'cube': {'orientation': 'XY', 'palette': 'sepia'},
+                },
+            ).parse_args([])
+
+        self.assertEqual(options.orientation, '')
+        self.assertEqual(options.palette, '')
+
+    def test_configured_help_names_the_defaults(self) -> None:
+        """The help of a configured client shows what it will open on."""
+        help_text = entry.build_parser(CONFIG).format_help()
+
+        self.assertIn(ENDPOINT, help_text)
+        self.assertIn('Default: DF.', help_text)
+        self.assertIn('Default: dracula.', help_text)
 
     def test_main_reads_the_stream_while_the_window_is_open(self) -> None:
         """The stream is read from before the window opens to after."""

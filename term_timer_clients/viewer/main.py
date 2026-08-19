@@ -3,6 +3,7 @@ import logging
 import sys
 from argparse import ArgumentTypeError
 from argparse import Namespace
+from collections.abc import Collection
 
 from cubing_algs.constants import ORIENTATIONS
 from cubing_algs.display.gl import SENSOR_BASIS
@@ -15,6 +16,10 @@ from cubing_algs.exceptions import CubingAlgsError
 from cubing_algs.vcube import VCube
 
 from term_timer_clients.argparser import ArgumentParser
+from term_timer_clients.config import Config
+from term_timer_clients.config import configured_cube
+from term_timer_clients.config import configured_endpoint
+from term_timer_clients.config import load_config
 from term_timer_clients.protocol import EventStream
 from term_timer_clients.protocol import parse_endpoint
 from term_timer_clients.viewer.client import CubeCast
@@ -28,13 +33,17 @@ DEFAULT_WINDOW_SIZE = (400, 300)
 
 SIZE_SEPARATOR = 'x'
 
-# Shown as the cube reports itself, painted as cubing-algs paints it,
-# and whole: a client of a stream has no configuration file of its own
-# to read a taste from, and each of the three is one option away
-DEFAULT_ORIENTATION = ''
+# Read from the configuration of term-timer, under the very keys the
+# session it listens to is displayed with: a window opened next to a
+# terminal shows the same cube as the terminal, and each is still one
+# option away. What the file says nothing of is shown as the cube
+# reports itself, painted as cubing-algs paints it, and whole.
+ORIENTATION_SETTING = 'orientation'
 
-DEFAULT_PALETTE = ''
+PALETTE_SETTING = 'palette'
 
+# A step of the solve is what a window is opened on, never a taste kept
+# between sessions, so nothing configures it
 DEFAULT_MODE = ''
 
 # The framing of cubing-algs. What is given here is also what the
@@ -74,6 +83,40 @@ def parse_stream_endpoint(value: str) -> str:
         raise ArgumentTypeError(msg)
 
     return endpoint
+
+
+def configured_choice(
+        setting: str,
+        value: str,
+        choices: Collection[str],
+) -> str:
+    """
+    Keep a configured setting only when this client knows what it names.
+
+    term-timer validates its own configuration, but it and the
+    cubing-algs this window draws with have their own releases: a taste
+    written for one this client does not have is dropped rather than
+    refused, a client ignoring what it does not know rather than
+    failing on it. Only what is typed on the command line stops the
+    client, and argparse says so itself.
+
+    Args:
+        setting: Name of the setting, as the configuration spells it.
+        value: The setting, as the configuration carries it.
+        choices: What this client is able to draw.
+
+    Returns:
+        The setting, empty when it names nothing known here.
+
+    """
+    if value and value not in choices:
+        logger.warning(
+            'Ignoring the configured cube %s "%s", unknown here',
+            setting, value,
+        )
+        return ''
+
+    return value
 
 
 def parse_camera_rotation(value: str) -> str:
@@ -130,9 +173,16 @@ def parse_size(value: str) -> tuple[int, int]:
     return int(width), int(height)
 
 
-def build_parser() -> ArgumentParser:
+def build_parser(config: Config) -> ArgumentParser:
     """
     Describe what the client takes on its command line.
+
+    The configuration is handed over rather than read here: it is what
+    the defaults of the parser are made of, and a parser built on an
+    empty one is the client with nothing configured anywhere.
+
+    Args:
+        config: The configuration of term-timer, as it was read.
 
     Returns:
         The parser of the ``cube-cast`` arguments.
@@ -142,34 +192,54 @@ def build_parser() -> ArgumentParser:
         description='Watch a cube in 3D, from the term-timer event stream.',
     )
 
+    orientations = sorted(ORIENTATIONS)
+    palettes = sorted(PALETTES)
+
+    endpoint = configured_endpoint(config)
+    orientation = configured_choice(
+        ORIENTATION_SETTING,
+        configured_cube(config, ORIENTATION_SETTING),
+        orientations,
+    )
+    palette = configured_choice(
+        PALETTE_SETTING,
+        configured_cube(config, PALETTE_SETTING),
+        palettes,
+    )
+
+    # Required only when the configuration names no endpoint: what is
+    # missing then is the stream itself, and argparse is what says so
     parser.add_argument(
         '-e', '--endpoint',
-        required=True,
+        required=not endpoint,
+        default=endpoint,
         type=parse_stream_endpoint,
         metavar='ENDPOINT',
         help=(
             'Connect to this ZeroMQ endpoint, one of those the\n'
-            '[publisher] section of the configuration binds'
+            '[publisher] section of the configuration binds.\n'
+            f'Default: { endpoint or "the first one it binds" }'
         ),
     )
     parser.add_argument(
         '-o', '--orientation',
-        default=DEFAULT_ORIENTATION,
-        choices=sorted(ORIENTATIONS),
+        default=orientation,
+        choices=orientations,
         metavar='ORIENTATION',
         help=(
             'Set the cube orientation used.\n'
-            'Default: the faces the cube is held by.'
+            'Default: '
+            f'{ orientation or "the faces the cube is held by" }.'
         ),
     )
     parser.add_argument(
         '-p', '--palette',
-        default=DEFAULT_PALETTE,
-        choices=sorted(PALETTES),
+        default=palette,
+        choices=palettes,
         metavar='PALETTE',
         help=(
             'Set the colors of the cube.\n'
-            'Default: the colors of a cube.'
+            f'Default: { palette or "the colors of a cube" }.'
         ),
     )
     parser.add_argument(
@@ -272,9 +342,12 @@ def main() -> int:
         Exit code, 1 when no window could be opened.
 
     """
-    options = build_parser().parse_args(sys.argv[1:])
-
     logging.basicConfig(level=logging.INFO, format=LOG_FORMAT)
+
+    # Read before the arguments: what term-timer was configured with is
+    # what the client is configured with, and the command line is what
+    # says otherwise
+    options = build_parser(load_config()).parse_args(sys.argv[1:])
 
     host = build_host(options)
     stream = EventStream(options.endpoint)

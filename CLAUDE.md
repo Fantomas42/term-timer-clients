@@ -47,6 +47,20 @@ Three layers, and the boundaries between them are the point:
   about cubes: frames in, envelopes out. Shared by every client.
   The subscriber *connects* and the publisher *binds*, which is what
   makes start order irrelevant and lets a client come and go.
+- **`config.py`** — the configuration of term-timer, read where
+  term-timer keeps it: `TERM_TIMER_CONFIG`, or `config.toml` under
+  `TERM_TIMER_HOME`, or `~/.term_timer/config.toml`, the same lookup on
+  both sides so a client finds the file of the session it listens to.
+  It is what the defaults of `cube-cast` are made of — the first
+  endpoint `[publisher]` binds, and the `orientation` and the `palette`
+  of `[cube]` — and `-e` is required only when nothing configured one.
+  The file belongs to term-timer: nothing here creates it, completes
+  it, or fails on it, an unreadable one being an absence of defaults
+  rather than an error, and a taste this client cannot draw being
+  dropped with a warning rather than refused. `build_parser()` is
+  handed the configuration rather than reading it, so a parser built on
+  an empty one is the client with nothing configured anywhere — which
+  is what the tests are given.
 - **`viewer/client.py`** — `CubeCast`, the whole of `cube-cast`, and it
   touches neither a socket nor a window. An envelope comes in and a
   viewer method is called: topics are dispatched through a
