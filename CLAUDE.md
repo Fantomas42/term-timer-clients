@@ -78,20 +78,16 @@ Three layers, and the boundaries between them are the point:
   at `world * model`, so a drop written into the model alone would
   fall towards the D face — it is framed by the orientation and undone
   by its conjugate instead. `CubeCast.present` is what moves it: a
-  cube that described itself, or — when this client never heard the
-  arrival — a cube heard talking at all. Gathering on an arrival we
-  *did* hear would pick a solved cube up and repaint it in mid air a
-  moment later, the state being seconds away at most; gathering on a
-  session joined in the middle is the opposite bet, the state having
-  been published before this window was listening and nothing
-  republishing it until the hardware has a reason to. **The core is
-  not on that
-  clock**: `Assembly.glow` is moved by `CubeCast.connected` alone,
-  over `CORE_DURATION`, while `Assembly.progress` carries the pieces.
-  Two events, two effects — a cube announces its link and describes
-  its colors seconds apart, and a ball waiting for the facelets would
-  have the window say nothing at all of a cube that has already
-  connected. Obsidian while nothing is connected, its blue green back
+  cube connected *and* described. Gathering on the link alone would
+  pick a solved cube up and repaint it in mid air a moment later, and
+  gathering on a state alone would leave the colors of a cube nobody
+  is connected to any more hanging in the window. **The core is not
+  on that clock**: `Assembly.glow` is moved by `CubeCast.connected`
+  alone, over `CORE_DURATION`, while `Assembly.progress` carries the
+  pieces. Two events, two effects — a link and a state are published
+  apart, and a ball waiting for the facelets would have the window
+  say nothing at all of a cube that has already connected. Obsidian
+  while nothing is connected, its blue green back
   the moment the link comes up: the one thing left in the window has
   to say for itself whether there is a cube behind it. It travels
   through `look.core_color`, which the `look=` of `Viewer.draw()`
@@ -171,13 +167,15 @@ opened in the middle of a session has heard neither. So the cube
 talking at all is what says it is there, and `cube.link` is the only
 topic that ever says it is gone.
 
-`CubeCast.announced` is what tells the two situations apart: it says
-this client was there when the link came up, and it is what buys the
-wait for `cube.facelets`. Without it there is nothing to wait for —
-the state went out before this window was listening — so the cube is
-shown on what is heard and repainted when a state finally comes.
-`restart()` clears it: a publisher that restarted announces nothing to
-a window already open.
+`CubeCast.present` is two conditions, and they answer the two events
+the effect is made of: `connected` says there is a cube, `described`
+says it has told what it looks like, and the pieces are drawn only
+when both hold. The two arrive milliseconds apart on real hardware,
+so nothing is waited on that is not already on its way. A link that
+drops lets `described` go with it — a state belongs to the connection
+it was published in, and the cube describes itself again at the next
+one — which also means a session joined in the middle keeps its core
+alone in the window until a state is finally published.
 
 `sid` changing means the publisher restarted: `CubeCast.restart()`
 throws away the cube, the tracker and the title rather than showing a

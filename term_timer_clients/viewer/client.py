@@ -81,12 +81,6 @@ class CubeCast:
         self.battery = ''
         self.connected = False
         self.described = False
-        # Whether this client heard the link come up itself. A cube
-        # announces its departure and never its arrival, so what says
-        # so is term-timer: a client that was there for it knows the
-        # state is a moment away, and one that was not has joined a
-        # session already running and will not be told anything again.
-        self.announced = False
         # Starts on the version this viewer speaks, so that a foreign
         # stream is reported once and not on every message it sends
         self.version_seen: Any = PROTOCOL_VERSION
@@ -106,25 +100,25 @@ class CubeCast:
         """
         Tell whether there is a cube to show, and what it looks like.
 
-        A cube that described itself is a cube to show, and an arrival
-        this client was there for is worth the wait for that
-        description: a link is up long before the cube has said
-        anything of its colors, and gathering on the link alone would
-        pick a solved cube up and repaint it in mid air a moment later.
+        Two conditions, and they are two because they answer two
+        events: the link says there is a cube, the state says what it
+        looks like, and the pieces are only ever drawn when both hold.
+        Gathering on the link alone would pick a solved cube up and
+        repaint it in mid air a moment later; gathering on a state
+        alone would leave the colors of a cube nobody is connected to
+        any more hanging in the window.
 
-        A cube heard talking with no arrival ever announced is the
-        other way round: this client came in the middle of a session,
-        the state was published before it was listening and nothing
-        will publish it again until the hardware has a reason to. The
-        colors are then caught up with rather than waited for - a
-        window left empty while the moves play on nothing says far less
-        than a cube repainted at the next state does.
+        The two arrive milliseconds apart when a cube really connects,
+        so nothing is waited for that is not already on its way, and a
+        session joined in the middle is read the same way as any other:
+        moves playing on a cube that never said what it looks like are
+        not a cube.
 
         Returns:
             True when a cube is there and worth drawing.
 
         """
-        return self.connected and (self.described or not self.announced)
+        return self.connected and self.described
 
     @property
     def title(self) -> str:
@@ -168,7 +162,6 @@ class CubeCast:
         self.battery = ''
         self.connected = False
         self.described = False
-        self.announced = False
 
         if self.tracker is not None:
             self.tracker.reset()
@@ -359,15 +352,11 @@ class CubeCast:
         very state the next connection starts from, and a window that
         closed itself would take the session with it.
 
-        What is described stays described. A link that drops and comes
-        back is the same cube, and the colors it was last seen in are
-        the ones it gathers back in - the hardware describes itself
-        again at the next connection anyway.
-
-        A link coming up is the one arrival this client ever hears,
-        and it is remembered as such: what follows it is a cube about
-        to say what it looks like, where the same message never heard
-        at all is a session that started without this window.
+        What is described goes with the link. A cube that comes back
+        describes itself again at the next connection, and its pieces
+        wait for that state rather than gathering on the colors of a
+        link that is no longer up: what was published belongs to the
+        connection it was published in.
 
         Args:
             data: Payload of a ``cube.link`` message.
@@ -375,5 +364,5 @@ class CubeCast:
         """
         self.connected = bool(data.get('connected', True))
 
-        if self.connected:
-            self.announced = True
+        if not self.connected:
+            self.described = False

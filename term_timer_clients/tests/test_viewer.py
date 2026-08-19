@@ -452,14 +452,15 @@ class CubeLinkTestCase(ClientTestCase):
 
         self.assertTrue(self.view.present)
 
-    def test_a_move_heard_with_no_arrival_shows_the_cube(self) -> None:
-        """A session already running is caught up with, not waited on."""
+    def test_a_move_heard_alone_shows_no_cube(self) -> None:
+        """A cube turning is a cube there, and not a cube described."""
         self.view.dispatch(envelope('cube.move', {'move': 'R'}))
 
+        self.assertTrue(self.view.connected)
         self.assertFalse(self.view.described)
-        self.assertTrue(self.view.present)
+        self.assertFalse(self.view.present)
 
-    def test_an_arrival_heard_is_worth_waiting_for_the_colors(self) -> None:
+    def test_a_link_is_waited_on_for_the_colors(self) -> None:
         """A cube that just connected says what it looks like in a moment."""
         self.view.dispatch(
             envelope('cube.link', {'connected': True, 'reason': 'opened'}),
@@ -472,17 +473,26 @@ class CubeLinkTestCase(ClientTestCase):
 
         self.assertTrue(self.view.present)
 
-    def test_a_new_session_is_joined_in_the_middle_too(self) -> None:
-        """A publisher that restarted announces nothing to this window."""
+    def test_a_new_session_starts_over_from_no_colors(self) -> None:
+        """A publisher that restarted describes its cube to this window."""
         self.view.dispatch(
             envelope('cube.link', {'connected': True, 'reason': 'opened'}),
         )
+        self.view.dispatch(envelope('cube.facelets', {'facelets': FACELETS}))
 
         self.view.dispatch(
             envelope('cube.move', {'move': 'R'}, session_id='ffffffff'),
         )
 
-        self.assertFalse(self.view.announced)
+        self.assertFalse(self.view.present)
+
+        self.view.dispatch(
+            envelope(
+                'cube.facelets', {'facelets': FACELETS},
+                session_id='ffffffff',
+            ),
+        )
+
         self.assertTrue(self.view.present)
 
     def test_the_session_plane_says_nothing_of_the_cube(self) -> None:
@@ -500,8 +510,8 @@ class CubeLinkTestCase(ClientTestCase):
 
         self.assertFalse(self.view.present)
 
-    def test_a_link_that_comes_back_shows_the_cube_again(self) -> None:
-        """A cube that describes itself twice is described once."""
+    def test_a_link_that_comes_back_waits_for_the_colors_again(self) -> None:
+        """A cube that left describes itself again before it is shown."""
         self.view.dispatch(envelope('cube.facelets', {'facelets': FACELETS}))
         self.view.dispatch(
             envelope('cube.link', {'connected': False, 'reason': 'lost'}),
@@ -510,7 +520,21 @@ class CubeLinkTestCase(ClientTestCase):
             envelope('cube.link', {'connected': True, 'reason': 'opened'}),
         )
 
+        self.assertFalse(self.view.described)
+        self.assertFalse(self.view.present)
+
+        self.view.dispatch(envelope('cube.facelets', {'facelets': FACELETS}))
+
         self.assertTrue(self.view.present)
+
+    def test_a_link_that_drops_lets_the_colors_go(self) -> None:
+        """A state belongs to the connection it was published in."""
+        self.view.dispatch(envelope('cube.facelets', {'facelets': FACELETS}))
+        self.view.dispatch(
+            envelope('cube.link', {'connected': False, 'reason': 'lost'}),
+        )
+
+        self.assertFalse(self.view.described)
 
     def test_a_new_session_throws_the_old_cube_away(self) -> None:
         """A publisher that restarted describes its cube again."""
