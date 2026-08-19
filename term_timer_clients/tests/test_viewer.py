@@ -36,6 +36,7 @@ from cubing_algs.vcube import VCube
 from term_timer_clients.tests.fixtures import envelope
 from term_timer_clients.viewer import host as window
 from term_timer_clients.viewer import main as entry
+from term_timer_clients.viewer.assembly import CORE_DURATION
 from term_timer_clients.viewer.assembly import DORMANT_CORE
 from term_timer_clients.viewer.assembly import FALL_DURATION
 from term_timer_clients.viewer.assembly import MAGNET_DURATION
@@ -45,7 +46,6 @@ from term_timer_clients.viewer.assembly import STAGGER
 from term_timer_clients.viewer.assembly import Assembly
 from term_timer_clients.viewer.assembly import Flight
 from term_timer_clients.viewer.assembly import breath
-from term_timer_clients.viewer.assembly import core_lead
 from term_timer_clients.viewer.assembly import tumble_axis
 from term_timer_clients.viewer.assembly import waiting_core
 from term_timer_clients.viewer.client import WINDOW_TITLE
@@ -499,12 +499,12 @@ class AssemblyTestCase(unittest.TestCase):
         """A cube that arrives is whole once the magnet is done."""
         assembly = Assembly()
 
-        assembly.settle(present=True, delta=MAGNET_DURATION / 2)
+        assembly.settle(present=True, linked=True, delta=MAGNET_DURATION / 2)
 
         self.assertAlmostEqual(assembly.progress, 0.5)
         self.assertTrue(assembly.rising)
 
-        assembly.settle(present=True, delta=MAGNET_DURATION)
+        assembly.settle(present=True, linked=True, delta=MAGNET_DURATION)
 
         self.assertEqual(assembly.progress, 1.0)
 
@@ -512,18 +512,19 @@ class AssemblyTestCase(unittest.TestCase):
         """A cube that falls never falls past the floor."""
         assembly = Assembly(progress=1.0, rising=True)
 
-        assembly.settle(present=False, delta=FALL_DURATION * 2)
+        assembly.settle(present=False, linked=False, delta=FALL_DURATION * 2)
 
         self.assertEqual(assembly.progress, 0.0)
         self.assertFalse(assembly.rising)
 
     def test_a_frame_going_backwards_moves_nothing(self) -> None:
         """A clock that went back leaves the assembly where it was."""
-        assembly = Assembly(progress=0.5)
+        assembly = Assembly(progress=0.5, glow=0.5)
 
-        assembly.settle(present=True, delta=-1.0)
+        assembly.settle(present=True, linked=True, delta=-1.0)
 
         self.assertEqual(assembly.progress, 0.5)
+        self.assertEqual(assembly.glow, 0.5)
 
     def test_a_whole_cube_is_handed_back_untouched(self) -> None:
         """A cube that is all there costs the effect nothing at all."""
@@ -623,7 +624,8 @@ class AssemblyTestCase(unittest.TestCase):
         assembly = Assembly()
 
         drawn = assembly.advance(
-            scene, IDENTITY, present=True, delta=MAGNET_DURATION,
+            scene, IDENTITY,
+            present=True, linked=True, delta=MAGNET_DURATION,
         )
 
         self.assertEqual(assembly.progress, 1.0)
@@ -639,18 +641,16 @@ class CoreTintTestCase(unittest.TestCase):
             Assembly().tint(DEFAULT_LOOK).core_color, DORMANT_CORE,
         )
 
-    def test_a_whole_cube_keeps_the_look_it_was_handed(self) -> None:
+    def test_a_lit_core_keeps_the_look_it_was_handed(self) -> None:
         """A connected viewer draws the picture cubing-algs describes."""
         self.assertIs(
-            Assembly(progress=1.0, rising=True).tint(DEFAULT_LOOK),
+            Assembly(progress=1.0, rising=True, glow=1.0).tint(DEFAULT_LOOK),
             DEFAULT_LOOK,
         )
 
-    def test_the_core_lights_up_as_the_pieces_gather(self) -> None:
-        """The color travels with the pieces, not on a switch of its own."""
-        mixed = Assembly(progress=0.5, rising=True).tint(
-            DEFAULT_LOOK,
-        ).core_color
+    def test_the_core_lights_up_along_the_link(self) -> None:
+        """The color travels on the link, not on a switch of its own."""
+        mixed = Assembly(glow=0.5).tint(DEFAULT_LOOK).core_color
 
         for dormant, channel, live in zip(
                 DORMANT_CORE, mixed, CORE_COLOR, strict=True,
@@ -700,16 +700,28 @@ class CoreTintTestCase(unittest.TestCase):
             DEFAULT_LOOK.core_rim_strength,
         )
 
-    def test_the_core_lights_up_ahead_of_the_pieces(self) -> None:
-        """The ball answers the first move, not the end of the travel."""
-        self.assertEqual(core_lead(0.0), 0.0)
-        self.assertEqual(core_lead(1.0), 1.0)
-        self.assertGreater(core_lead(0.2), 0.5)
+    def test_a_link_lights_the_core_with_no_cube_described(self) -> None:
+        """The ball answers the link, not the state that follows it."""
+        assembly = Assembly()
 
-    def test_the_breath_dies_out_as_the_pieces_gather(self) -> None:
-        """The breath goes out on the lead the color comes in on."""
+        assembly.settle(present=False, linked=True, delta=CORE_DURATION)
+
+        self.assertEqual(assembly.glow, 1.0)
+        self.assertEqual(assembly.progress, 0.0)
+        self.assertIs(assembly.tint(DEFAULT_LOOK), DEFAULT_LOOK)
+
+    def test_a_core_goes_out_with_the_pieces_falling(self) -> None:
+        """A cube goes away in one gesture where it arrives in two."""
+        assembly = Assembly(progress=1.0, rising=True, glow=1.0)
+
+        assembly.settle(present=False, linked=False, delta=FALL_DURATION / 2)
+
+        self.assertAlmostEqual(assembly.glow, assembly.progress)
+
+    def test_the_breath_dies_out_as_the_core_lights_up(self) -> None:
+        """The breath goes out exactly as the color comes in."""
         peak = PULSE_PERIOD / 2
-        half = Assembly(progress=0.5, rising=True, elapsed=peak)
+        half = Assembly(glow=0.5, elapsed=peak)
 
         self.assertLess(
             half.tint(DEFAULT_LOOK).core_rim_strength,
@@ -725,7 +737,7 @@ class CoreTintTestCase(unittest.TestCase):
         assembly = Assembly()
 
         for _ in range(4):
-            assembly.settle(present=False, delta=PULSE_PERIOD / 2)
+            assembly.settle(present=False, linked=False, delta=PULSE_PERIOD / 2)
 
         self.assertLess(assembly.elapsed, PULSE_PERIOD)
         self.assertAlmostEqual(breath(assembly.elapsed), 0.0)

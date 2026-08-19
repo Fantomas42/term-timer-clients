@@ -80,11 +80,14 @@ class CubeCastHost(GlfwHost):
     decorated window answers too, where it merely doubles its bar.
 
     ``assembly`` is where the pieces of the cube stand between the
-    floor and the core, which the link is what moves: a cube nobody is
-    connected to lies out of the window and leaves the ball core alone
-    in it, and one that connects gathers around it. The effect is
-    layered on the very seam the viewer documents for it, so a frame
-    with no cube to show costs a scene with no piece in it.
+    floor and the core: a cube nobody is connected to lies out of the
+    window and leaves the ball core alone in it, and one that has
+    described itself gathers around it. The core is moved by the link
+    instead, and the two are handed over apart - a cube announces
+    itself long before it says what it looks like, and the ball is
+    what answers the link while the pieces wait for a state. The
+    effect is layered on the very seam the viewer documents for it, so
+    a frame with no cube to show costs a scene with no piece in it.
 
     ``msaa`` is what the cube is antialiased by, and turning it off is
     a way out of the offscreen detour a transparent window imposes:
@@ -280,7 +283,7 @@ class CubeCastHost(GlfwHost):
 
     def draw_cube(self, delta: float) -> None:
         """
-        Draw the cube, its pieces where the link has them stand.
+        Draw the cube, its pieces where the state has them stand.
 
         The frame of the parent is taken apart rather than called: the
         viewer documents ``advance()`` and ``draw()`` as the seam an
@@ -297,11 +300,12 @@ class CubeCastHost(GlfwHost):
             self.viewer.advance(delta),
             resolve_orientation(self.viewer.orientation),
             present=self.view.present,
+            linked=self.view.connected,
             delta=delta,
         )
 
         # Read after the time has passed, and on its own line: the core
-        # is painted for the moment the pieces have just been placed in.
+        # is painted for the very moment the pieces were just placed in.
         look = self.assembly.tint(self.viewer.look)
 
         self.viewer.draw(scene=drawn, look=look)

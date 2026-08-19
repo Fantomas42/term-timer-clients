@@ -66,12 +66,14 @@ PULSE_PERIOD = 2.6
 # why the breath is spent on both rather than on either.
 PULSE_RIM = 1.4
 
-# How much of a lead the color of the core takes on the pieces, as the
-# exponent the progress of the assembly is read through. Below one, so
-# the core is lit well before the cube is whole: the ball is what the
-# window is showing when the link comes up, and it has to answer the
-# very first move rather than comment on the end of the travel.
-CORE_LEAD = 0.35
+# Seconds the ball core takes to light up once the link is up. Short,
+# and above all its own: the link and the state are two events, and a
+# cube that has just connected stays silent about its colors for as
+# long as it pleases - a core waiting for the facelets would have the
+# window say nothing happened for all that time. It goes out on the
+# fall of the pieces instead, the departure being one gesture where
+# the arrival is two.
+CORE_DURATION = 0.5
 
 
 def clamp(value: float) -> float:
@@ -173,27 +175,6 @@ def waiting_core(elapsed: float) -> tuple[float, float, float]:
         DORMANT_CORE[1] + (PULSE_CORE[1] - DORMANT_CORE[1]) * share,
         DORMANT_CORE[2] + (PULSE_CORE[2] - DORMANT_CORE[2]) * share,
     )
-
-
-def core_lead(progress: float) -> float:
-    """
-    Tell how much of the live color a given assembly is worth.
-
-    The core runs ahead of the pieces rather than with them: it is
-    what the window is showing when the link comes up, and a ball
-    still on standby while the cube is half built would have the
-    picture say the opposite of what the stream just said. The curve
-    is what buys the lead, so nothing needs a clock of its own and the
-    color still lands exactly with the last piece.
-
-    Args:
-        progress: How far along the pieces stand.
-
-    Returns:
-        How much of the live color the core takes.
-
-    """
-    return math.pow(progress, CORE_LEAD)
 
 
 def core_color(share: float, elapsed: float) -> tuple[float, float, float]:
@@ -339,8 +320,16 @@ class Assembly:
     The whole of the effect, and none of it touches the viewer: a scene
     comes in and a scene comes out, its pieces moved. ``progress`` is
     where the pieces stand, kept from a frame to the next, zero for a
-    cube lying on the floor and one for a cube whole; ``elapsed`` is
-    the clock the core left alone in the window breathes on.
+    cube lying on the floor and one for a cube whole; ``glow`` is where
+    the core stands, on the link alone; ``elapsed`` is the clock the
+    core left alone in the window breathes on.
+
+    **The core and the pieces are two effects on two events**, and
+    that is the whole of why there are two progressions: a cube
+    announces its link and describes its colors seconds apart, the
+    core answers the first and the pieces the second. One progression
+    shared would have the ball wait for the facelets and the window
+    show nothing at all of a cube that has already connected.
 
     **The floor is the floor of the screen, not of the cube.** The
     shader draws a piece at ``world * model``, ``world`` being how the
@@ -353,6 +342,13 @@ class Assembly:
 
     progress: float = 0.0
     rising: bool = False
+
+    # How much of the live color the ball core carries, from the
+    # obsidian of a cube nobody is connected to, to the blue green of
+    # a core running. It is moved by the link and by nothing else,
+    # which is what lets it be lit while the pieces are still lying on
+    # the floor waiting for a state.
+    glow: float = 0.0
 
     # Where the breath of a waiting core stands, in seconds wrapped on
     # its own period: an effect nobody ever closes the window on would
@@ -415,7 +411,7 @@ class Assembly:
 
         return self.hidden
 
-    def settle(self, *, present: bool, delta: float) -> None:
+    def settle(self, *, present: bool, linked: bool, delta: float) -> None:
         """
         Move the assembly towards the cube being there, or being gone.
 
@@ -424,22 +420,39 @@ class Assembly:
         cannot be forever arriving, and the two directions are timed
         apart because they are not the same gesture.
 
+        The core is moved on the link and the pieces on the state,
+        each at its own pace: the ball lights up the moment the stream
+        says there is a cube, and the pieces gather when the cube has
+        said what it looks like. A link that is up with nothing
+        described yet is exactly the moment the two are told apart.
+
         Args:
             present: Whether there is a cube to show.
+            linked: Whether the link with the cube is up.
             delta: Seconds gone by since the last frame.
 
         """
         self.rising = present
         self.elapsed = (self.elapsed + max(delta, 0.0)) % PULSE_PERIOD
 
-        step = max(delta, 0.0) / (
-            MAGNET_DURATION if present else FALL_DURATION
-        )
+        elapsed = max(delta, 0.0)
+
+        step = elapsed / (MAGNET_DURATION if present else FALL_DURATION)
 
         if present:
             self.progress = min(1.0, self.progress + step)
         else:
             self.progress = max(0.0, self.progress - step)
+
+        # The fall is shared with the pieces and the rise is not: a
+        # cube goes away in one gesture, the ball going out as the
+        # pieces cave in, where it arrives in two.
+        lit = elapsed / (CORE_DURATION if linked else FALL_DURATION)
+
+        if linked:
+            self.glow = min(1.0, self.glow + lit)
+        else:
+            self.glow = max(0.0, self.glow - lit)
 
     def apply(self, scene: Scene, orientation: Quat) -> Scene:
         """
@@ -490,19 +503,20 @@ class Assembly:
 
         The one thing left in the window when nothing is connected has
         to say so for itself: an obsidian ball is waiting, a blue green
-        one is running. It travels with the pieces rather than on a switch
-        of its own, so the core lights up as they gather and goes out
-        as they let go.
+        one is running. It travels on the link and not with the
+        pieces, so the ball answers the cube connecting rather than
+        the state it takes its time to describe - a core still on
+        standby while the stream has already said there is a cube
+        would have the picture say the opposite of what was published.
 
         A ball alone in the window breathes on top of that, colour and
         rim light together: a still picture says nothing of whether the
         viewer is waiting for a cube or has stopped, and the swell is
         what tells the two apart. Both halves are weighed by what is
-        missing of the *core*, not of the cube, so the breath goes out
-        with the same lead the color comes in on rather than lingering
-        under a ball already lit.
+        missing of the *core*, so the breath goes out exactly as the
+        color comes in rather than lingering under a ball already lit.
 
-        The very look is handed back once the cube is whole, so a
+        The very look is handed back once the core is lit, so a
         connected viewer draws the picture cubing-algs describes and
         nothing of the effect is left in it.
 
@@ -514,15 +528,14 @@ class Assembly:
             The same look, its core painted for the moment.
 
         """
-        if self.progress >= 1.0:
+        if self.glow >= 1.0:
             return look
 
-        lead = core_lead(self.progress)
-        waiting = breath(self.elapsed) * (1.0 - lead)
+        waiting = breath(self.elapsed) * (1.0 - self.glow)
 
         return replace(
             look,
-            core_color=core_color(lead, self.elapsed),
+            core_color=core_color(self.glow, self.elapsed),
             core_rim_strength=look.core_rim_strength * (
                 1.0 + PULSE_RIM * waiting
             ),
@@ -534,6 +547,7 @@ class Assembly:
             orientation: Quat,
             *,
             present: bool,
+            linked: bool,
             delta: float,
     ) -> Scene:
         """
@@ -543,12 +557,13 @@ class Assembly:
             scene: The cube being drawn.
             orientation: How the whole cube is held.
             present: Whether there is a cube to show.
+            linked: Whether the link with the cube is up.
             delta: Seconds gone by since the last frame.
 
         Returns:
             The cube to draw right now.
 
         """
-        self.settle(present=present, delta=delta)
+        self.settle(present=present, linked=linked, delta=delta)
 
         return self.apply(scene, orientation)

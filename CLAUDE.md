@@ -66,29 +66,31 @@ Three layers, and the boundaries between them are the point:
   by its conjugate instead. `CubeCast.present` is what moves it, and
   it takes both halves: a link that is up, and a cube that has said
   what it looks like. Assembling on the link alone would gather a
-  solved cube and repaint it in mid air. The core is painted for the
-  same progress: obsidian while nothing is connected, its blue green
-  back once the cube is whole — the one thing left in the window has
+  solved cube and repaint it in mid air. **The core is not on that
+  clock**: `Assembly.glow` is moved by `CubeCast.connected` alone,
+  over `CORE_DURATION`, while `Assembly.progress` carries the pieces.
+  Two events, two effects — a cube announces its link and describes
+  its colors seconds apart, and a ball waiting for the facelets would
+  have the window say nothing at all of a cube that has already
+  connected. Obsidian while nothing is connected, its blue green back
+  the moment the link comes up: the one thing left in the window has
   to say for itself whether there is a cube behind it. It travels
   through `look.core_color`, which the `look=` of `Viewer.draw()`
   carries and which **cubing-algs holds since the `Look` field of the
   same name**: the `>=` of `pyproject.toml` is what says so, and it
-  has to name the release that added it. The core does **not** travel
-  at the pace of the pieces: `core_lead()` reads the progress through
-  `CORE_LEAD`, an exponent below one, so the ball is lit well before
-  the cube is whole — it is what the window is showing when the link
-  comes up, and it answers the first move rather than the end of the
-  travel. A dormant ball also **breathes**, obsidian to a dark red and
-  back (`DORMANT_CORE` to `PULSE_CORE`), `core_rim_strength` swelling
-  on the same cosine: a still picture says nothing of whether the
-  viewer is waiting or has stopped, and the wait is what has to be
-  seen. Both ends of the breath are colors the live core is nowhere
-  near, so waiting is never read as running. It lives in the dormant
-  end of the mix and is weighed by the *lead*, so it goes out exactly
-  as the color comes in and a whole cube is handed the very look it
-  came with; `Assembly.elapsed` is its clock, wrapped on
-  `PULSE_PERIOD` so a window nobody closes never counts a night into a
-  float.
+  has to name the release that added it. Only the fall is shared —
+  `glow` goes out on `FALL_DURATION` with the pieces, a cube going
+  away being one gesture where it arrives in two. A dormant ball also
+  **breathes**, obsidian to a dark red and back (`DORMANT_CORE` to
+  `PULSE_CORE`), `core_rim_strength` swelling on the same cosine: a
+  still picture says nothing of whether the viewer is waiting or has
+  stopped, and the wait is what has to be seen. Both ends of the
+  breath are colors the live core is nowhere near, so waiting is never
+  read as running. It lives in the dormant end of the mix and is
+  weighed by what is missing of the *glow*, so it goes out exactly as
+  the color comes in and a lit core is handed the very look it came
+  with; `Assembly.elapsed` is its clock, wrapped on `PULSE_PERIOD` so
+  a window nobody closes never counts a night into a float.
 - **`viewer/main.py` / `viewer/host.py`** — the entry point assembles
   window, viewer and stream; `CubeCastHost` extends the cubing-algs
   `GlfwHost` with a window title, and takes the keyboard moves back
