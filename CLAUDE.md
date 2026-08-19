@@ -63,10 +63,15 @@ Three layers, and the boundaries between them are the point:
   **The floor is the floor of the screen**: the shader draws a piece
   at `world * model`, so a drop written into the model alone would
   fall towards the D face — it is framed by the orientation and undone
-  by its conjugate instead. `CubeCast.present` is what moves it, and
-  it takes both halves: a link that is up, and a cube that has said
-  what it looks like. Assembling on the link alone would gather a
-  solved cube and repaint it in mid air. **The core is not on that
+  by its conjugate instead. `CubeCast.present` is what moves it: a
+  cube that described itself, or — when this client never heard the
+  arrival — a cube heard talking at all. Gathering on an arrival we
+  *did* hear would pick a solved cube up and repaint it in mid air a
+  moment later, the state being seconds away at most; gathering on a
+  session joined in the middle is the opposite bet, the state having
+  been published before this window was listening and nothing
+  republishing it until the hardware has a reason to. **The core is
+  not on that
   clock**: `Assembly.glow` is moved by `CubeCast.connected` alone,
   over `CORE_DURATION`, while `Assembly.progress` carries the pieces.
   Two events, two effects — a cube announces its link and describes
@@ -151,6 +156,14 @@ is published by term-timer rather than by a driver — and a client
 opened in the middle of a session has heard neither. So the cube
 talking at all is what says it is there, and `cube.link` is the only
 topic that ever says it is gone.
+
+`CubeCast.announced` is what tells the two situations apart: it says
+this client was there when the link came up, and it is what buys the
+wait for `cube.facelets`. Without it there is nothing to wait for —
+the state went out before this window was listening — so the cube is
+shown on what is heard and repainted when a state finally comes.
+`restart()` clears it: a publisher that restarted announces nothing to
+a window already open.
 
 `sid` changing means the publisher restarted: `CubeCast.restart()`
 throws away the cube, the tracker and the title rather than showing a

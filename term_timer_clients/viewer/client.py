@@ -81,6 +81,12 @@ class CubeCast:
         self.battery = ''
         self.connected = False
         self.described = False
+        # Whether this client heard the link come up itself. A cube
+        # announces its departure and never its arrival, so what says
+        # so is term-timer: a client that was there for it knows the
+        # state is a moment away, and one that was not has joined a
+        # session already running and will not be told anything again.
+        self.announced = False
         # Starts on the version this viewer speaks, so that a foreign
         # stream is reported once and not on every message it sends
         self.version_seen: Any = PROTOCOL_VERSION
@@ -100,16 +106,25 @@ class CubeCast:
         """
         Tell whether there is a cube to show, and what it looks like.
 
-        Both halves are needed, and the second is the one that is easy
-        to forget: a link is up long before the cube has said anything
-        of its colors, and a viewer assembling on the link alone would
-        gather a solved cube and then repaint it in mid air.
+        A cube that described itself is a cube to show, and an arrival
+        this client was there for is worth the wait for that
+        description: a link is up long before the cube has said
+        anything of its colors, and gathering on the link alone would
+        pick a solved cube up and repaint it in mid air a moment later.
+
+        A cube heard talking with no arrival ever announced is the
+        other way round: this client came in the middle of a session,
+        the state was published before it was listening and nothing
+        will publish it again until the hardware has a reason to. The
+        colors are then caught up with rather than waited for - a
+        window left empty while the moves play on nothing says far less
+        than a cube repainted at the next state does.
 
         Returns:
-            True when a cube is there and has described itself.
+            True when a cube is there and worth drawing.
 
         """
-        return self.connected and self.described
+        return self.connected and (self.described or not self.announced)
 
     @property
     def title(self) -> str:
@@ -153,6 +168,7 @@ class CubeCast:
         self.battery = ''
         self.connected = False
         self.described = False
+        self.announced = False
 
         if self.tracker is not None:
             self.tracker.reset()
@@ -348,8 +364,16 @@ class CubeCast:
         the ones it gathers back in - the hardware describes itself
         again at the next connection anyway.
 
+        A link coming up is the one arrival this client ever hears,
+        and it is remembered as such: what follows it is a cube about
+        to say what it looks like, where the same message never heard
+        at all is a session that started without this window.
+
         Args:
             data: Payload of a ``cube.link`` message.
 
         """
         self.connected = bool(data.get('connected', True))
+
+        if self.connected:
+            self.announced = True

@@ -436,6 +436,39 @@ class CubeLinkTestCase(ClientTestCase):
 
         self.assertTrue(self.view.present)
 
+    def test_a_move_heard_with_no_arrival_shows_the_cube(self) -> None:
+        """A session already running is caught up with, not waited on."""
+        self.view.dispatch(envelope('cube.move', {'move': 'R'}))
+
+        self.assertFalse(self.view.described)
+        self.assertTrue(self.view.present)
+
+    def test_an_arrival_heard_is_worth_waiting_for_the_colors(self) -> None:
+        """A cube that just connected says what it looks like in a moment."""
+        self.view.dispatch(
+            envelope('cube.link', {'connected': True, 'reason': 'opened'}),
+        )
+        self.view.dispatch(envelope('cube.move', {'move': 'R'}))
+
+        self.assertFalse(self.view.present)
+
+        self.view.dispatch(envelope('cube.facelets', {'facelets': FACELETS}))
+
+        self.assertTrue(self.view.present)
+
+    def test_a_new_session_is_joined_in_the_middle_too(self) -> None:
+        """A publisher that restarted announces nothing to this window."""
+        self.view.dispatch(
+            envelope('cube.link', {'connected': True, 'reason': 'opened'}),
+        )
+
+        self.view.dispatch(
+            envelope('cube.move', {'move': 'R'}, session_id='ffffffff'),
+        )
+
+        self.assertFalse(self.view.announced)
+        self.assertTrue(self.view.present)
+
     def test_the_session_plane_says_nothing_of_the_cube(self) -> None:
         """What term-timer knows alone is no proof a cube is there."""
         self.view.dispatch(envelope('session.record', {'kind': 'single'}))
@@ -463,7 +496,7 @@ class CubeLinkTestCase(ClientTestCase):
 
         self.assertTrue(self.view.present)
 
-    def test_a_new_session_starts_with_no_cube(self) -> None:
+    def test_a_new_session_throws_the_old_cube_away(self) -> None:
         """A publisher that restarted describes its cube again."""
         self.view.dispatch(envelope('cube.facelets', {'facelets': FACELETS}))
 
@@ -471,7 +504,8 @@ class CubeLinkTestCase(ClientTestCase):
             envelope('cube.gyro', {}, session_id='ffffffff'),
         )
 
-        self.assertFalse(self.view.present)
+        self.assertFalse(self.view.described)
+        self.assertTrue(self.viewer.cube.is_solved)
 
 
 def screen_place(instance: CubieInstance, orientation: Quat) -> Vec3:
