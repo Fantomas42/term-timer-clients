@@ -44,20 +44,20 @@ TUMBLE = 1.2
 # says nothing of a viewer waiting. Left a little of itself, the ball
 # is read by its own volume, and its rim light exists at all: that one
 # multiplies the color, and there is nothing to multiply on black. A
-# breath of warmth away from neutral, so that the ember it breathes to
-# is where the color already leans.
-DORMANT_CORE: tuple[float, float, float] = (0.145, 0.138, 0.134)
+# breath of cold away from neutral, so that the teal it breathes to is
+# where the color already leans.
+DORMANT_CORE: tuple[float, float, float] = (0.066, 0.071, 0.071)
 
-# What the breath carries that ball to and back from: the ember of
-# something on standby, banked rather than glowing. Sitting a step
-# above the graphite instead of a leap - the swell has to be found by
-# an eye resting on the window, never thrown at one crossing it - and
-# nowhere near the blue green of a live core, which is what keeps
-# waiting from being read as running. It is warmth rather than color:
-# what swells is mostly the *light*, the hue barely leaning off the
-# graphite, because a ball turning red says something happened where a
-# ball brightening says something is waiting.
-PULSE_CORE: tuple[float, float, float] = (0.225, 0.152, 0.132)
+# What the breath carries that ball to and back from: the very hue of
+# a live core, taken far down into the dark. The wait wears the color
+# of the thing it waits for rather than a warmth of its own - a ball
+# turning red says something happened, where a ball rising out of the
+# graphite says something is waiting, and an alarm is the one thing a
+# wait must never be read as. What tells the two apart is then the
+# light and not the hue: a sixth of what a running cube is drawn
+# with, a swell to be found by an eye resting on the window and never
+# a cube announcing itself.
+PULSE_CORE: tuple[float, float, float] = (0.032, 0.109, 0.109)
 
 # Seconds of one full breath of a core left on its own, in and back
 # out. A ball sitting perfectly still says nothing about whether the
@@ -75,6 +75,30 @@ PULSE_PERIOD = 6.0
 # beats like a metronome, and what has to be shown is something at
 # rest, not something counting.
 BREATH_EASE = 1.6
+
+# Seconds the lamp lighting a waiting core takes to go once around
+# it. **The ball itself cannot be made to spin**, and that is geometry
+# rather than taste: the core is a smooth sphere of a single color
+# centered on the origin, so a rotation of its own carries every vertex
+# onto the place of another and its normal along with it - the fragment
+# a pixel lands on keeps the very normal it had, and not one pixel
+# changes. The core already proves it, following the gyroscope through
+# every turn of the cube without ever being seen to move. What can be
+# seen turning on a ball is the *light*: the highlight slides around it
+# and the shaded side follows, which is what a ball rolling under a
+# lamp looks like, and it is the one thing here a sphere of one color
+# can say. Slower than the breath, and on a period the breath does not
+# divide, so the two never fall back into a single beat - a wait is
+# made of things that do not agree on a rhythm, and two effects
+# clapping together every few seconds would count time out loud.
+SPIN_PERIOD = 11.0
+
+# The vertical the lamp walks around, in world coordinates. The default
+# light stands some thirty degrees off it, so the highlight travels a
+# circle around the top of the ball rather than washing across it from
+# side to side: a spot going round is read as one turning ball, where a
+# light sweeping the whole sphere is read as the lamp being moved.
+SPIN_AXIS = Vec3(0.0, 1.0, 0.0)
 
 # How the light around a waiting core swells with the same breath: the
 # rim gains in strength and loses in tightness, so the edge of the ball
@@ -222,14 +246,52 @@ def breath(elapsed: float) -> float:
     return math.pow(swell, BREATH_EASE)
 
 
+def spun(
+        direction: tuple[float, float, float],
+        elapsed: float,
+        amplitude: float,
+) -> tuple[float, float, float]:
+    """
+    Walk the lamp of a waiting core around the vertical.
+
+    What is turning here is the light and never the ball: a sphere of
+    one color is invariant under its own rotation, so the only way a
+    core alone in the window can be seen to spin is for the highlight
+    to travel around it.
+
+    The angle is weighed by the amplitude rather than being switched
+    off, which is what hands the orientation back untouched: the lamp
+    walks home the short way as the core lights up instead of snapping
+    back to its place, and a core lit is lit by exactly the light the
+    look was built with.
+
+    Args:
+        direction: The light as the look gives it.
+        elapsed: Seconds gone by in the current turn.
+        amplitude: How much of the turn to take, from all of it for a
+            core alone to none of it for a core lit.
+
+    Returns:
+        The direction the light shines from right now.
+
+    """
+    turn = Quat.from_axis_angle(
+        SPIN_AXIS, 2.0 * math.pi * elapsed / SPIN_PERIOD * amplitude,
+    ).rotate(Vec3(*direction))
+
+    return (turn.x, turn.y, turn.z)
+
+
 def waiting_core(elapsed: float) -> tuple[float, float, float]:
     """
     Paint the core of a cube nobody is connected to, breathing.
 
-    Graphite to a banked ember and back: what is waiting must not be
-    mistaken for what is running, so the breath is spent between two
-    colors the live core is nowhere near, and over a stretch of
-    seconds nobody could read as a pulse.
+    Graphite to a banked teal and back: what is waiting must not be
+    mistaken for what is running, so the breath is spent far below the
+    live core, and over a stretch of seconds nobody could read as a
+    pulse. The hue is the one a connected cube wears - the wait is
+    about that cube and says so - and the darkness alone is what keeps
+    the one from being taken for the other.
 
     Args:
         elapsed: Seconds gone by since the viewer opened, wrapped on a
@@ -403,7 +465,8 @@ class Assembly:
     where the pieces stand, kept from a frame to the next, zero for a
     cube blown apart and one for a cube whole; ``glow`` is where the
     core stands, on the link alone; ``elapsed`` is the clock the core
-    left alone in the window breathes on.
+    left alone in the window breathes on, and ``turned`` the one its
+    lamp goes around it on.
 
     **The core and the pieces are two effects on two events**, and
     that is the whole of why there are two progressions: a cube
@@ -439,6 +502,20 @@ class Assembly:
     # having none of it left, and a link that drops picks it up where
     # it stands rather than starting it over on a jump.
     elapsed: float = 0.0
+
+    # Where the lamp of a waiting core stands in its turn, in seconds
+    # wrapped on its own period. Its own clock rather than the one of
+    # the breath: the two are deliberately out of step, and a single
+    # counter would either lock them together or jump one of them at
+    # the wrap.
+    #
+    # Unlike the breath, it is **held at nothing while the core is
+    # lit** rather than running on behind a connected cube. The breath
+    # can be picked up wherever it stands, its whole weight coming
+    # from the mix; a turn cannot, because the angle it stands at is
+    # where the lamp would be dragged to the moment the link drops.
+    # A cube going away has to see the light *start* moving, not land.
+    turned: float = 0.0
 
     # The distance of the farthest piece from the center of the cube,
     # which the reach of the blast and the ranking are both measured
@@ -508,6 +585,11 @@ class Assembly:
         said what it looks like. A link that is up with nothing
         described yet is exactly the moment the two are told apart.
 
+        The two clocks of a waiting core are not treated alike: the
+        breath runs on whatever happens, where the turn of the lamp is
+        held at nothing until the ball starts going out. A breath is
+        picked up wherever it stands and a turn has to begin.
+
         Args:
             present: Whether there is a cube to show.
             linked: Whether the link with the cube is up.
@@ -536,6 +618,23 @@ class Assembly:
             self.glow = min(1.0, self.glow + lit)
         else:
             self.glow = max(0.0, self.glow - lit)
+
+        # The turn is held at nothing for as long as the core is lit,
+        # and it is read after the glow rather than before so a link
+        # that has just dropped starts its turn on the very frame the
+        # ball starts going out. A counter left running behind a
+        # connected cube would stand at some arbitrary angle by the
+        # time the link drops, and the lamp - which enters weighed by
+        # what is missing of the core - would rush across that whole
+        # angle over the length of the blast: a light thrown around the
+        # ball where the effect is a ball beginning to turn. Reset
+        # where the weight is nothing, so it costs no jump: the angle
+        # already is zero when the counter is, and the lamp leaves its
+        # place instead of arriving from somewhere.
+        if self.glow >= 1.0:
+            self.turned = 0.0
+        else:
+            self.turned = (self.turned + elapsed) % SPIN_PERIOD
 
     def apply(self, scene: Scene) -> Scene:
         """
@@ -591,9 +690,10 @@ class Assembly:
 
         A ball alone in the window breathes on top of that, and the
         breath is spent on the light before it is spent on the hue: the
-        rim brightens and reaches further in, and the ember it lies on
-        barely leans off the graphite - a ball brightening says it is
-        waiting where a ball turning red would say something happened.
+        rim brightens and reaches further in, and the teal it lies on
+        stays far below the one a running cube is drawn with - a ball
+        rising out of the graphite says it is waiting, where a ball
+        reaching the live color would say the cube is there.
         The rim and nothing else, because it multiplies the color where
         the highlight is added on top of it and added white: a sheen
         swelling over the ball washes it out instead of warming it, so
@@ -601,6 +701,17 @@ class Assembly:
         the wait. Every half of it is weighed by what is missing of the
         *core*, so the breath goes out exactly as the color comes in
         rather than lingering under a ball already lit.
+
+        The lamp walks around the ball on top of all that, which is the
+        only spin a sphere of one color has in it: turning the core
+        itself would carry every vertex onto the place of another and
+        change nothing at all, where a highlight going round is read as
+        the ball rolling. It is the lamp of the *cube* as much as of
+        the core - cubing-algs lights both from the one direction - so
+        the turn is weighed by what is missing of the core like
+        everything else here: a cube that has connected is lit from
+        exactly where the look says, and the lamp is never found off
+        its place under a cube standing still.
 
         The very look is handed back once the core is lit, so a
         connected viewer draws the picture cubing-algs describes and
@@ -623,6 +734,9 @@ class Assembly:
         return replace(
             look,
             core_color=core_color(self.glow, self.elapsed),
+            light_direction=spun(
+                look.light_direction, self.turned, missing,
+            ),
             core_rim_strength=look.core_rim_strength * (
                 1.0 + PULSE_RIM * waiting
             ),

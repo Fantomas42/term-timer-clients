@@ -119,7 +119,7 @@ Three layers, and the boundaries between them are the point:
   has to name the release that added it. Only the blast is shared —
   `glow` goes out on `EXPLOSION_DURATION` with the pieces, a cube
   going away being one gesture where it arrives in two. A dormant
-  ball also **breathes**, graphite to a banked ember and back
+  ball also **breathes**, graphite to a banked teal and back
   (`DORMANT_CORE` to
   `PULSE_CORE`), the light of the core swelling on the same cosine: a
   still picture says nothing of whether the viewer is waiting or has
@@ -133,7 +133,7 @@ Three layers, and the boundaries between them are the point:
   alarm. **The breath is spent on the light before the hue**, which is
   what there is here in the place of a glow: `core_rim_strength` up
   and `core_rim_power` down (`PULSE_RIM`, `PULSE_HALO`) widen the edge
-  inwards, on an ember barely leaning off the graphite. **The rim and
+  inwards, on a teal barely leaning off the graphite. **The rim and
   nothing else**, and the reason is in the shader: it multiplies the
   color, where the highlight is *added* on top of it and added white —
   a sheen swelling over the ball glows the color of the lamp and
@@ -141,12 +141,38 @@ Three layers, and the boundaries between them are the point:
   the matte it is dimmed to, still for the whole of the wait, and a
   halo spilling past the ball would take a post-process cubing-algs
   does not have. Both ends of the
-  breath are colors the live core is nowhere near, so waiting is never
-  read as running. It lives in the dormant end of the mix and is
+  breath wear **the hue of a live core and none of its light** — the
+  wait is about that cube, so it says so with its color, and a sixth
+  of the brightness is what keeps waiting from being read as running,
+  where a warmth of its own would have said something happened
+  instead. It lives in the dormant end of the mix and is
   weighed by what is missing of the *glow*, so it goes out exactly as
   the color comes in and a lit core is handed the very look it came
   with; `Assembly.elapsed` is its clock, wrapped on `PULSE_PERIOD` so
-  a window nobody closes never counts a night into a float.
+  a window nobody closes never counts a night into a float. The lamp
+  also **walks around the ball** (`spun()`, `SPIN_PERIOD`,
+  `SPIN_AXIS`, on the `Assembly.turned` clock of its own, **held at
+  nothing while the core is lit** — where `elapsed` runs on behind a
+  connected cube, a turn cannot: the angle a free-running counter
+  stood at is the angle the lamp would be dragged across the moment
+  the link drops, and a cube going away has to see the light *start*
+  moving rather than land. It is reset where the weight of the turn is
+  already nothing, so the reset itself costs no jump), and it is
+  the light because **the ball cannot be turned at all**: the core is
+  a smooth sphere of one color centered on the origin, so rotating its
+  geometry carries every vertex onto the place of another and its
+  normal with it — not one pixel changes, which the core already
+  proves by following the gyroscope through every turn of the cube
+  without ever being seen to move. A highlight going round is the only
+  spin such a ball has in it. `light_direction` is the lamp of the
+  *cube* as much as of the core — cubing-algs lights both from the one
+  direction — so the angle is weighed by what is missing of the glow
+  like everything else here: the lamp walks home the short way as the
+  core lights up, and a connected cube is lit from exactly where
+  `--rotation` and the look put it. `SPIN_PERIOD` is deliberately not
+  divided by `PULSE_PERIOD`, and it has its own counter for that
+  reason: one clock shared would either lock the breath and the turn
+  into a single beat or jump one of them at the wrap.
 - **`tail/client.py` / `tail/render.py` / `tail/ansi.py`** — `tt-tail`,
   the stream read out loud. `StreamTail` holds no cube and imports
   nothing of cubing-algs: what arrives is what is shown, and the only

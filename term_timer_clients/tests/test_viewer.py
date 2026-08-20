@@ -9,6 +9,7 @@ until a stage is attached to it - is enough. The captures of
 import sys
 import unittest
 from dataclasses import replace
+from itertools import pairwise
 from pathlib import Path
 from unittest.mock import MagicMock
 from unittest.mock import create_autospec
@@ -38,6 +39,7 @@ from term_timer_clients.viewer.assembly import EXPLOSION_DURATION
 from term_timer_clients.viewer.assembly import IMPLOSION_DURATION
 from term_timer_clients.viewer.assembly import PULSE_CORE
 from term_timer_clients.viewer.assembly import PULSE_PERIOD
+from term_timer_clients.viewer.assembly import SPIN_PERIOD
 from term_timer_clients.viewer.assembly import Assembly
 from term_timer_clients.viewer.assembly import Flight
 from term_timer_clients.viewer.assembly import breath
@@ -717,26 +719,34 @@ class CoreTintTestCase(unittest.TestCase):
         self.assertEqual(waiting_core(0.0), DORMANT_CORE)
         self.assertEqual(waiting_core(PULSE_PERIOD), DORMANT_CORE)
 
-    def test_the_breath_peaks_on_the_ember(self) -> None:
-        """Half a period in, the ball is the ember it breathes to."""
-        for channel, ember in zip(
+    def test_the_breath_peaks_on_the_standby_core(self) -> None:
+        """Half a period in, the ball is the color it breathes to."""
+        for channel, standby in zip(
                 waiting_core(PULSE_PERIOD / 2), PULSE_CORE, strict=True,
         ):
-            self.assertAlmostEqual(channel, ember)
+            self.assertAlmostEqual(channel, standby)
 
-    def test_the_breath_never_leaves_the_ember(self) -> None:
-        """Waiting is never to be read as running: no blue green in it."""
+    def test_the_breath_wears_the_hue_of_a_live_core(self) -> None:
+        """The wait is about a cube, and says so with its color."""
         for elapsed in (0.3, PULSE_PERIOD / 3, PULSE_PERIOD / 2):
             red, green, blue = waiting_core(elapsed)
 
-            for dormant, channel, ember in zip(
+            for dormant, channel, standby in zip(
                     DORMANT_CORE, (red, green, blue), PULSE_CORE, strict=True,
             ):
-                self.assertGreaterEqual(channel, min(dormant, ember))
-                self.assertLessEqual(channel, max(dormant, ember))
+                self.assertGreaterEqual(channel, min(dormant, standby))
+                self.assertLessEqual(channel, max(dormant, standby))
 
-            self.assertGreater(red, green)
-            self.assertGreater(red, blue)
+            self.assertGreater(green, red)
+            self.assertGreater(blue, red)
+
+    def test_the_breath_never_reaches_a_live_core(self) -> None:
+        """Waiting is never to be read as running: the light says so."""
+        for elapsed in (0.3, PULSE_PERIOD / 3, PULSE_PERIOD / 2):
+            for channel, live in zip(
+                    waiting_core(elapsed), CORE_COLOR, strict=True,
+            ):
+                self.assertLess(channel, live)
 
     def test_the_light_swells_with_the_color(self) -> None:
         """The core says it is waiting with its rim as well as its hue."""
@@ -843,6 +853,125 @@ class CoreTintTestCase(unittest.TestCase):
 
         self.assertLess(assembly.elapsed, PULSE_PERIOD)
         self.assertAlmostEqual(breath(assembly.elapsed), 0.0)
+
+
+class CoreSpinTestCase(unittest.TestCase):
+    """The lamp walking around a core nobody is connected to."""
+
+    @staticmethod
+    def gap(direction: tuple[float, float, float]) -> float:
+        """
+        Tell how far the lamp stands from where the look put it.
+
+        Read on the angle rather than channel by channel: the light
+        travels an arc, so a single channel of it swings past both of
+        its ends on the way and says nothing about the distance left.
+
+        Args:
+            direction: The light as the moment has it.
+
+        Returns:
+            How much the lamp has turned away, the more the smaller.
+
+        """
+        return Vec3(*direction).normalized().dot(
+            Vec3(*DEFAULT_LOOK.light_direction).normalized(),
+        )
+
+    def test_the_lamp_walks_around_a_waiting_core(self) -> None:
+        """A ball of one color can only be seen to turn by its light."""
+        quarter = Assembly(turned=SPIN_PERIOD / 4).tint(DEFAULT_LOOK)
+
+        self.assertNotEqual(
+            quarter.light_direction, DEFAULT_LOOK.light_direction,
+        )
+        self.assertAlmostEqual(
+            Vec3(*quarter.light_direction).length(),
+            Vec3(*DEFAULT_LOOK.light_direction).length(),
+        )
+
+    def test_the_lamp_goes_around_the_vertical(self) -> None:
+        """A spot going round the top reads as a ball rolling."""
+        for turned in (SPIN_PERIOD / 4, SPIN_PERIOD / 3, SPIN_PERIOD / 2):
+            self.assertAlmostEqual(
+                Assembly(turned=turned).tint(DEFAULT_LOOK).light_direction[1],
+                DEFAULT_LOOK.light_direction[1],
+            )
+
+    def test_the_lamp_closes_its_turn_where_it_opened_it(self) -> None:
+        """A light that jumped at the wrap would blink on the ball."""
+        self.assertEqual(
+            Assembly(turned=0.0).tint(DEFAULT_LOOK).light_direction,
+            DEFAULT_LOOK.light_direction,
+        )
+
+        for channel, live in zip(
+                Assembly(turned=SPIN_PERIOD).tint(DEFAULT_LOOK).light_direction,
+                DEFAULT_LOOK.light_direction, strict=True,
+        ):
+            self.assertAlmostEqual(channel, live)
+
+    def test_a_connected_cube_is_lit_from_where_the_look_says(self) -> None:
+        """The lamp of the core is the lamp of the cube: it goes home."""
+        for channel, live in zip(
+                Assembly(glow=1.0, turned=SPIN_PERIOD / 3).tint(
+                    DEFAULT_LOOK,
+                ).light_direction,
+                DEFAULT_LOOK.light_direction, strict=True,
+        ):
+            self.assertAlmostEqual(channel, live)
+
+    def test_the_lamp_walks_home_as_the_core_lights_up(self) -> None:
+        """It comes back the short way rather than snapping into place."""
+        turned = SPIN_PERIOD / 3
+        away = self.gap(Assembly(turned=turned).tint(
+            DEFAULT_LOOK,
+        ).light_direction)
+        half = self.gap(Assembly(glow=0.5, turned=turned).tint(
+            DEFAULT_LOOK,
+        ).light_direction)
+
+        self.assertGreater(half, away)
+        self.assertLess(half, 1.0)
+
+    def test_a_lit_core_holds_its_lamp_still(self) -> None:
+        """A counter left running would say where to rush at the drop."""
+        assembly = Assembly(turned=SPIN_PERIOD / 3)
+
+        for _ in range(60):
+            assembly.settle(present=True, linked=True, delta=0.016)
+
+        self.assertEqual(assembly.turned, 0.0)
+
+    def test_a_dropped_link_starts_the_turn_from_its_place(self) -> None:
+        """The lamp leaves its place rather than arriving from nowhere."""
+        assembly = Assembly()
+
+        for _ in range(60):
+            assembly.settle(present=True, linked=True, delta=0.016)
+
+        walked = [1.0]
+
+        for _ in range(60):
+            assembly.settle(present=False, linked=False, delta=0.016)
+            walked.append(self.gap(assembly.tint(DEFAULT_LOOK).light_direction))
+
+        self.assertAlmostEqual(walked[1], 1.0, places=4)
+
+        for standing, next_one in pairwise(walked):
+            self.assertLessEqual(next_one, standing)
+
+        self.assertLess(walked[-1], 1.0)
+
+    def test_the_turn_is_wrapped_on_its_own_period(self) -> None:
+        """Its own clock: the breath does not divide the turn."""
+        assembly = Assembly()
+
+        for _ in range(4):
+            assembly.settle(present=False, linked=False, delta=SPIN_PERIOD / 2)
+
+        self.assertLess(assembly.turned, SPIN_PERIOD)
+        self.assertNotAlmostEqual(assembly.turned, assembly.elapsed)
 
 
 class CaptureTestCase(unittest.TestCase):
