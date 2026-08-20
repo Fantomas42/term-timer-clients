@@ -36,30 +36,74 @@ SHOCKWAVE = 0.35
 # radians. It is spent on the way in, so a piece lands square.
 TUMBLE = 1.2
 
-# The core of a cube nobody is connected to: an obsidian ball, all but
-# out. It takes the color of a core back as the pieces gather around
-# it, and loses it again as they let go - the one thing left in the
-# window has to say for itself whether there is a cube behind it.
-DORMANT_CORE: tuple[float, float, float] = (0.04, 0.04, 0.05)
+# The core of a cube nobody is connected to: graphite, a ball
+# barely lit rather than a black one. Nearly out, and **not** out: the
+# shader adds the highlight to the color instead of shading it, so a
+# core taken down to black is a ball with nothing on it but that one
+# spot of lamp - which is the plastic sphere of an old rendering and
+# says nothing of a viewer waiting. Left a little of itself, the ball
+# is read by its own volume, and its rim light exists at all: that one
+# multiplies the color, and there is nothing to multiply on black. A
+# breath of warmth away from neutral, so that the ember it breathes to
+# is where the color already leans.
+DORMANT_CORE: tuple[float, float, float] = (0.145, 0.138, 0.134)
 
-# What the breath carries that ball to and back from: a dark red, the
-# ember of something on standby. Two colors nobody could take for the
-# blue green of a live core, which is what keeps waiting from being
-# read as running.
-PULSE_CORE: tuple[float, float, float] = (0.38, 0.05, 0.06)
+# What the breath carries that ball to and back from: the ember of
+# something on standby, banked rather than glowing. Sitting a step
+# above the graphite instead of a leap - the swell has to be found by
+# an eye resting on the window, never thrown at one crossing it - and
+# nowhere near the blue green of a live core, which is what keeps
+# waiting from being read as running. It is warmth rather than color:
+# what swells is mostly the *light*, the hue barely leaning off the
+# graphite, because a ball turning red says something happened where a
+# ball brightening says something is waiting.
+PULSE_CORE: tuple[float, float, float] = (0.225, 0.152, 0.132)
 
 # Seconds of one full breath of a core left on its own, in and back
 # out. A ball sitting perfectly still says nothing about whether the
 # window is waiting or has stopped: the wait is what has to be seen,
 # and a slow swell is what shows it without ever asking to be looked
-# at.
-PULSE_PERIOD = 2.6
+# at. Slow is the whole of it - the breath of something at rest, taken
+# over the seconds a sigh is taken over rather than the ones a pulse
+# is counted in, and anything quicker reads as an alarm rather than as
+# a wait.
+PULSE_PERIOD = 6.0
 
-# How much the rim light around a waiting core swells with the same
-# breath, as a share of the strength the look gives it. The color says
-# the ball is on standby and the light says it is waiting, which is
-# why the breath is spent on both rather than on either.
-PULSE_RIM = 1.4
+# How the swell is weighed on top of the cosine. Above one, so that
+# the ball spends the greater part of the period at the bottom of its
+# breath and rises only briefly: a swell in and out over equal halves
+# beats like a metronome, and what has to be shown is something at
+# rest, not something counting.
+BREATH_EASE = 1.6
+
+# How the light around a waiting core swells with the same breath: the
+# rim gains in strength and loses in tightness, so the edge of the ball
+# both brightens and reaches further in. The color says the ball is on
+# standby and the light says it is waiting, which is why the breath is
+# spent on both rather than on either.
+#
+# The rim is the only light here the breath is allowed to touch, and
+# the reason is in the shader: it **multiplies** the color, where the
+# highlight is added on top of it and added white. A sheen opened up
+# and raised over a whole ball glows, and it glows the color of the
+# lamp - what swells is then a pale veil rather than an ember, and a
+# ball washing out is neither discreet nor warm. So the highlight is
+# taken matte and left there, still for the whole of the wait, and
+# what breathes is a light wearing the color of the ball it lies on.
+PULSE_RIM = 1.0
+PULSE_HALO = 0.3
+
+# What is left of the highlight of the core while nothing is connected,
+# as a share of the strength and of the tightness the look gives it.
+# The shader adds the highlight on top of the color rather than through
+# it, so a spot of lamp on a nearly black ball is the one thing with
+# any strength in it: kept whole it draws the hard, round glint of a
+# rendering of thirty years ago, whatever the color underneath. Taken
+# down and spread out, it becomes the sheen of something matte, and the
+# ball is left to its own shape. Both come back with the link: the look
+# is handed back untouched the moment the core is lit.
+DORMANT_GLOSS = 0.12
+DORMANT_GLOSS_SPREAD = 0.45
 
 # Seconds the ball core takes to light up once the link is up. Short,
 # and above all its own: the link and the state are two events, and a
@@ -83,6 +127,28 @@ def clamp(value: float) -> float:
 
     """
     return min(1.0, max(0.0, value))
+
+
+def dimmed(value: float, share: float, missing: float) -> float:
+    """
+    Take one term of the light down to what a waiting core wears.
+
+    Weighed by what the core is missing rather than by the breath: a
+    ball on standby is matte for as long as it waits, where the swell
+    is what says it is still waiting. So the term comes back exactly
+    as the core lights up, and a lit one is handed the very light the
+    look came with.
+
+    Args:
+        value: The term as the look gives it.
+        share: How much of it a core with no cube behind it keeps.
+        missing: How much of the live core is still to come.
+
+    Returns:
+        The term, taken down for the moment.
+
+    """
+    return value * (1.0 - (1.0 - share) * missing)
 
 
 def shrink(scale: float) -> Mat4:
@@ -135,8 +201,12 @@ def breath(elapsed: float) -> float:
 
     A cosine rather than a triangle: the swell has no corner at either
     end of it, and a wait that never snaps is what keeps the effect
-    from reading as a blink. It is read at none of itself when no time
-    has passed, so a core just left on its own is the very obsidian it
+    from reading as a blink. Weighed by ``BREATH_EASE`` on top of it,
+    which is what keeps the two halves of the period from being worth
+    the same: the ball lies at the bottom of its breath for the longer
+    part of it and rises only briefly, where an even swell in and out
+    beats like a metronome. It is read at none of itself when no time
+    has passed, so a core just left on its own is the very graphite it
     is described by.
 
     Args:
@@ -147,17 +217,19 @@ def breath(elapsed: float) -> float:
         How much of the breath is in, from none of it to all of it.
 
     """
-    return (1.0 - math.cos(2.0 * math.pi * elapsed / PULSE_PERIOD)) / 2.0
+    swell = (1.0 - math.cos(2.0 * math.pi * elapsed / PULSE_PERIOD)) / 2.0
+
+    return math.pow(swell, BREATH_EASE)
 
 
 def waiting_core(elapsed: float) -> tuple[float, float, float]:
     """
     Paint the core of a cube nobody is connected to, breathing.
 
-    Obsidian to a dark red and back, the ember of something on
-    standby: what is waiting must not be mistaken for what is running,
-    so the breath is spent between two colors the live core is nowhere
-    near.
+    Graphite to a banked ember and back: what is waiting must not be
+    mistaken for what is running, so the breath is spent between two
+    colors the live core is nowhere near, and over a stretch of
+    seconds nobody could read as a pulse.
 
     Args:
         elapsed: Seconds gone by since the viewer opened, wrapped on a
@@ -353,7 +425,7 @@ class Assembly:
     progress: float = 0.0
 
     # How much of the live color the ball core carries, from the
-    # obsidian of a cube nobody is connected to, to the blue green of
+    # graphite of a cube nobody is connected to, to the blue green of
     # a core running. It is moved by the link and by nothing else,
     # which is what lets it be lit while the pieces are still out
     # there waiting for a state.
@@ -505,19 +577,30 @@ class Assembly:
         Paint the ball core for how much of a cube stands around it.
 
         The one thing left in the window when nothing is connected has
-        to say so for itself: an obsidian ball is waiting, a blue green
-        one is running. It travels on the link and not with the
+        to say so for itself: a graphite ball is waiting, a blue green
+        one is running. It is taken down and never put out: the
+        highlight of the shader is added on top of the color, so a
+        core painted black would be that one glint and nothing else -
+        the plastic sphere of an old rendering, which is what a
+        dimmed, spread out highlight on a ball with some body left
+        takes the place of. It travels on the link and not with the
         pieces, so the ball answers the cube connecting rather than
         the state it takes its time to describe - a core still on
         standby while the stream has already said there is a cube
         would have the picture say the opposite of what was published.
 
-        A ball alone in the window breathes on top of that, colour and
-        rim light together: a still picture says nothing of whether the
-        viewer is waiting for a cube or has stopped, and the swell is
-        what tells the two apart. Both halves are weighed by what is
-        missing of the *core*, so the breath goes out exactly as the
-        color comes in rather than lingering under a ball already lit.
+        A ball alone in the window breathes on top of that, and the
+        breath is spent on the light before it is spent on the hue: the
+        rim brightens and reaches further in, and the ember it lies on
+        barely leans off the graphite - a ball brightening says it is
+        waiting where a ball turning red would say something happened.
+        The rim and nothing else, because it multiplies the color where
+        the highlight is added on top of it and added white: a sheen
+        swelling over the ball washes it out instead of warming it, so
+        the highlight is taken matte and held there for the whole of
+        the wait. Every half of it is weighed by what is missing of the
+        *core*, so the breath goes out exactly as the color comes in
+        rather than lingering under a ball already lit.
 
         The very look is handed back once the core is lit, so a
         connected viewer draws the picture cubing-algs describes and
@@ -534,13 +617,23 @@ class Assembly:
         if self.glow >= 1.0:
             return look
 
-        waiting = breath(self.elapsed) * (1.0 - self.glow)
+        missing = 1.0 - self.glow
+        waiting = breath(self.elapsed) * missing
 
         return replace(
             look,
             core_color=core_color(self.glow, self.elapsed),
             core_rim_strength=look.core_rim_strength * (
                 1.0 + PULSE_RIM * waiting
+            ),
+            core_rim_power=look.core_rim_power * (
+                1.0 - PULSE_HALO * waiting
+            ),
+            core_specular_strength=dimmed(
+                look.core_specular_strength, DORMANT_GLOSS, missing,
+            ),
+            core_specular_power=dimmed(
+                look.core_specular_power, DORMANT_GLOSS_SPREAD, missing,
             ),
         )
 

@@ -100,20 +100,47 @@ Three layers, and the boundaries between them are the point:
   alone, over `CORE_DURATION`, while `Assembly.progress` carries the
   pieces. Two events, two effects — a link and a state are published
   apart, and a ball waiting for the facelets would have the window
-  say nothing at all of a cube that has already connected. Obsidian
+  say nothing at all of a cube that has already connected. Graphite
   while nothing is connected, its blue green back
   the moment the link comes up: the one thing left in the window has
-  to say for itself whether there is a cube behind it. It travels
+  to say for itself whether there is a cube behind it. Graphite and
+  never black, because **the shader adds the core highlight on top of
+  the color rather than through it**: a ball taken down to black is
+  that one hard glint and nothing else — the plastic sphere of a
+  rendering of thirty years ago — and its rim light, which multiplies
+  the color, has nothing left to multiply. So a waiting core is also
+  taken matte, `core_specular_strength` and `core_specular_power`
+  dimmed and spread by `DORMANT_GLOSS` and `DORMANT_GLOSS_SPREAD`
+  through `dimmed()`, weighed by what is missing of the glow so the
+  sheen comes back exactly as the color does. It travels
   through `look.core_color`, which the `look=` of `Viewer.draw()`
   carries and which **cubing-algs holds since the `Look` field of the
   same name**: the `>=` of `pyproject.toml` is what says so, and it
   has to name the release that added it. Only the blast is shared —
   `glow` goes out on `EXPLOSION_DURATION` with the pieces, a cube
   going away being one gesture where it arrives in two. A dormant
-  ball also **breathes**, obsidian to a dark red and back (`DORMANT_CORE` to
-  `PULSE_CORE`), `core_rim_strength` swelling on the same cosine: a
+  ball also **breathes**, graphite to a banked ember and back
+  (`DORMANT_CORE` to
+  `PULSE_CORE`), the light of the core swelling on the same cosine: a
   still picture says nothing of whether the viewer is waiting or has
-  stopped, and the wait is what has to be seen. Both ends of the
+  stopped, and the wait is what has to be seen. Slowly, over a
+  `PULSE_PERIOD` measured in the seconds of something at rest, weighed
+  by `BREATH_EASE` so the ball lies at the bottom of its breath far
+  longer than it rises — an even swell in and out beats like a
+  metronome — and between two colors a step apart rather than a leap:
+  a swell is to be found by an eye resting on the window, never thrown
+  at one crossing it, and anything quicker or louder reads as an
+  alarm. **The breath is spent on the light before the hue**, which is
+  what there is here in the place of a glow: `core_rim_strength` up
+  and `core_rim_power` down (`PULSE_RIM`, `PULSE_HALO`) widen the edge
+  inwards, on an ember barely leaning off the graphite. **The rim and
+  nothing else**, and the reason is in the shader: it multiplies the
+  color, where the highlight is *added* on top of it and added white —
+  a sheen swelling over the ball glows the color of the lamp and
+  washes the ball out instead of warming it. So the highlight stays at
+  the matte it is dimmed to, still for the whole of the wait, and a
+  halo spilling past the ball would take a post-process cubing-algs
+  does not have. Both ends of the
   breath are colors the live core is nowhere near, so waiting is never
   read as running. It lives in the dormant end of the mix and is
   weighed by what is missing of the *glow*, so it goes out exactly as

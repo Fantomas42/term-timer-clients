@@ -682,7 +682,7 @@ class AssemblyTestCase(unittest.TestCase):
 class CoreTintTestCase(unittest.TestCase):
     """The ball core, painted for the cube standing around it."""
 
-    def test_a_core_with_no_cube_around_it_is_obsidian(self) -> None:
+    def test_a_core_with_no_cube_around_it_is_graphite(self) -> None:
         """The one thing left in the window says there is nothing behind."""
         self.assertEqual(
             Assembly().tint(DEFAULT_LOOK).core_color, DORMANT_CORE,
@@ -712,13 +712,13 @@ class CoreTintTestCase(unittest.TestCase):
             Assembly().tint(DEFAULT_LOOK).core_color,
         )
 
-    def test_the_breath_starts_and_ends_on_the_obsidian(self) -> None:
+    def test_the_breath_starts_and_ends_on_the_graphite(self) -> None:
         """A swell with no corner is what keeps a wait from blinking."""
         self.assertEqual(waiting_core(0.0), DORMANT_CORE)
         self.assertEqual(waiting_core(PULSE_PERIOD), DORMANT_CORE)
 
     def test_the_breath_peaks_on_the_ember(self) -> None:
-        """Half a period in, the ball is the dark red it breathes to."""
+        """Half a period in, the ball is the ember it breathes to."""
         for channel, ember in zip(
                 waiting_core(PULSE_PERIOD / 2), PULSE_CORE, strict=True,
         ):
@@ -732,8 +732,8 @@ class CoreTintTestCase(unittest.TestCase):
             for dormant, channel, ember in zip(
                     DORMANT_CORE, (red, green, blue), PULSE_CORE, strict=True,
             ):
-                self.assertGreaterEqual(channel, dormant)
-                self.assertLessEqual(channel, ember)
+                self.assertGreaterEqual(channel, min(dormant, ember))
+                self.assertLessEqual(channel, max(dormant, ember))
 
             self.assertGreater(red, green)
             self.assertGreater(red, blue)
@@ -746,6 +746,31 @@ class CoreTintTestCase(unittest.TestCase):
             ).core_rim_strength,
             DEFAULT_LOOK.core_rim_strength,
         )
+
+    def test_the_light_reaches_further_in_at_the_peak(self) -> None:
+        """A rim gaining in strength alone would only line the edge."""
+        self.assertLess(
+            Assembly(elapsed=PULSE_PERIOD / 2).tint(
+                DEFAULT_LOOK,
+            ).core_rim_power,
+            DEFAULT_LOOK.core_rim_power,
+        )
+
+    def test_the_breath_never_touches_the_highlight(self) -> None:
+        """An added white swelling over the ball washes it out."""
+        rest = Assembly().tint(DEFAULT_LOOK)
+        peak = Assembly(elapsed=PULSE_PERIOD / 2).tint(DEFAULT_LOOK)
+
+        self.assertEqual(
+            peak.core_specular_strength, rest.core_specular_strength,
+        )
+        self.assertEqual(
+            peak.core_specular_power, rest.core_specular_power,
+        )
+
+    def test_the_swell_rests_longer_than_it_rises(self) -> None:
+        """An even breath in and out beats like a metronome."""
+        self.assertLess(breath(PULSE_PERIOD / 4), 0.5)
 
     def test_a_link_lights_the_core_with_no_cube_described(self) -> None:
         """The ball answers the link, not the state that follows it."""
@@ -779,6 +804,34 @@ class CoreTintTestCase(unittest.TestCase):
         self.assertGreater(
             half.tint(DEFAULT_LOOK).core_rim_strength,
             DEFAULT_LOOK.core_rim_strength,
+        )
+
+    def test_a_waiting_core_is_matte(self) -> None:
+        """A glint on a nearly black ball is all an old rendering was."""
+        dormant = Assembly().tint(DEFAULT_LOOK)
+
+        self.assertLess(
+            dormant.core_specular_strength,
+            DEFAULT_LOOK.core_specular_strength,
+        )
+        self.assertLess(
+            dormant.core_specular_power,
+            DEFAULT_LOOK.core_specular_power,
+        )
+
+    def test_the_highlight_comes_back_with_the_link(self) -> None:
+        """The sheen is spent on what is missing, not on the breath."""
+        half = Assembly(glow=0.5, elapsed=PULSE_PERIOD / 2).tint(DEFAULT_LOOK)
+
+        self.assertGreater(
+            half.core_specular_strength,
+            Assembly(elapsed=PULSE_PERIOD / 2).tint(
+                DEFAULT_LOOK,
+            ).core_specular_strength,
+        )
+        self.assertLess(
+            half.core_specular_strength,
+            DEFAULT_LOOK.core_specular_strength,
         )
 
     def test_the_breath_is_wrapped_on_its_period(self) -> None:
