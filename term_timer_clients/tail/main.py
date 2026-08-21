@@ -1,7 +1,10 @@
 """Entry point of the ``tt-tail`` client."""
+import json
 import logging
 import sys
 from argparse import Namespace
+from contextlib import ExitStack
+from pathlib import Path
 from typing import IO
 
 from term_timer_clients.argparser import LOG_FORMAT
@@ -12,8 +15,10 @@ from term_timer_clients.config import configured_endpoint
 from term_timer_clients.config import load_config
 from term_timer_clients.protocol import CUBE_PREFIX
 from term_timer_clients.protocol import SESSION_PREFIX
+from term_timer_clients.protocol import Envelope
 from term_timer_clients.protocol import EventStream
 from term_timer_clients.tail.ansi import build_paint
+from term_timer_clients.tail.client import Recorder
 from term_timer_clients.tail.client import StreamTail
 from term_timer_clients.tail.client import Writer
 from term_timer_clients.tail.render import Renderer
@@ -24,6 +29,24 @@ logger = logging.getLogger(__name__)
 # published apart, and a tail showing one of them would be a tail of
 # half a session
 PREFIXES = (CUBE_PREFIX, SESSION_PREFIX)
+
+
+def parse_record_file(value: str) -> Path:
+    """
+    Read where a ``--record`` argument says the stream is kept.
+
+    The path is expanded the way the address of an ``ipc`` endpoint is,
+    and for the same reason: it is typed by hand, and a literal tilde
+    would be taken for the name of a directory.
+
+    Args:
+        value: The argument, as it was typed.
+
+    Returns:
+        The file the envelopes are appended to.
+
+    """
+    return Path(value).expanduser()
 
 
 def build_parser(config: Config) -> ArgumentParser:
@@ -54,6 +77,17 @@ def build_parser(config: Config) -> ArgumentParser:
         help=(
             'Show every message, the gyroscope included.\n'
             'Default: False.'
+        ),
+    )
+    parser.add_argument(
+        '-r', '--record',
+        type=parse_record_file,
+        metavar='FILE',
+        help=(
+            'Append every message that arrives to this file, one\n'
+            'JSON envelope per line, the gyroscope included and\n'
+            'whatever --all shows or hides.\n'
+            'Default: nothing is recorded.'
         ),
     )
     parser.add_argument(
@@ -92,13 +126,44 @@ def build_writer(stream: IO[str]) -> Writer:
     return write
 
 
-def build_tail(options: Namespace, stream: IO[str]) -> StreamTail:
+def build_recorder(stream: IO[str]) -> Recorder:
+    """
+    Give the client a place to keep the stream as it goes by.
+
+    One JSON object per line, and the envelope whole: what is written
+    down is what passed on the wire rather than what a reading made of
+    it, which is what makes the file replayable instead of merely
+    readable. A line at a time and flushed like the blocks, for the
+    reason a capture exists at all - what is still in a buffer when the
+    session is killed is the very part nobody has.
+
+    Args:
+        stream: Where the envelopes are kept.
+
+    Returns:
+        What an envelope is handed to.
+
+    """
+    def record(envelope: Envelope) -> None:
+        stream.write(f'{ json.dumps(envelope) }\n')
+        stream.flush()
+
+    return record
+
+
+def build_tail(
+        options: Namespace,
+        stream: IO[str],
+        recorder: Recorder | None = None,
+) -> StreamTail:
     """
     Assemble what reads the stream out loud.
 
     Args:
         options: The arguments the client was called with.
         stream: Where the client writes.
+        recorder: Where the client keeps what arrives, none when
+            nothing was asked to be kept.
 
     Returns:
         The reader, ready to be handed envelopes.
@@ -109,7 +174,41 @@ def build_tail(options: Namespace, stream: IO[str]) -> StreamTail:
     return StreamTail(
         Renderer(paint),
         build_writer(stream),
+        recorder,
         everything=options.everything,
+    )
+
+
+def open_recording(options: Namespace, stack: ExitStack) -> Recorder | None:
+    """
+    Open where the stream is kept, when it was asked to be kept at all.
+
+    Appended to rather than started over: a tail is stopped and started
+    again all day long, and the sessions tell themselves apart by the
+    identifier of their envelopes exactly as they do on the screen. So
+    what a second run has to say is added to what the first one heard,
+    and no run of it ever costs a capture.
+
+    A file that cannot be opened is left to say so, which is what
+    stops the client: a recording asked for and silently not made would
+    be found missing the day it is read, and by then the session it was
+    to hold is gone.
+
+    Args:
+        options: The arguments the client was called with.
+        stack: What the file is closed by.
+
+    Returns:
+        What an envelope is handed to, none when nothing is recorded.
+
+    """
+    if options.record is None:
+        return None
+
+    return build_recorder(
+        stack.enter_context(
+            options.record.open('a', encoding='utf-8'),
+        ),
     )
 
 
@@ -122,7 +221,8 @@ def main() -> int:
     none here. One reader, one writer, and nothing to lock.
 
     Returns:
-        Exit code, always 0: a tail ends when it is stopped.
+        Exit code, 0 once the tail is stopped and 1 when the recording
+        it was asked for cannot be written.
 
     """
     logging.basicConfig(level=logging.INFO, format=LOG_FORMAT)
@@ -132,19 +232,29 @@ def main() -> int:
     # says otherwise
     options = build_parser(load_config()).parse_args(sys.argv[1:])
 
-    tail = build_tail(options, sys.stdout)
-    stream = EventStream(options.endpoint, PREFIXES)
+    with ExitStack() as stack:
+        try:
+            recorder = open_recording(options, stack)
+        except OSError as error:
+            # Fatal rather than reported: what is asked for on a
+            # command line is asked for, and a tail reading on with
+            # nothing kept is the capture found missing later
+            logger.critical('Cannot record the stream: %s', error)
+            return 1
 
-    # A subscriber connects to a publisher that may not be there yet,
-    # and misses nothing of the session it waited for
-    stream.open()
+        tail = build_tail(options, sys.stdout, recorder)
+        stream = EventStream(options.endpoint, PREFIXES)
 
-    try:
-        while True:
-            stream.receive(tail.dispatch)
-    except KeyboardInterrupt:
-        logger.info('Closing the stream')
-    finally:
-        stream.close()
+        # A subscriber connects to a publisher that may not be there
+        # yet, and misses nothing of the session it waited for
+        stream.open()
+
+        try:
+            while True:
+                stream.receive(tail.dispatch)
+        except KeyboardInterrupt:
+            logger.info('Closing the stream')
+        finally:
+            stream.close()
 
     return 0

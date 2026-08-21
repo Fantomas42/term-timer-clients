@@ -208,7 +208,21 @@ Three layers, and the boundaries between them are the point:
   is still counted in the sequence, so a loss it hid is reported
   rather than blamed on the topic that comes next; the two prefixes
   cover everything the publisher emits, which is what makes a break in
-  `seq` a loss at all. The gaps are measured on **what is printed**,
+  `seq` a loss at all. **Reading and recording are two gestures**, and
+  the filters of one are not the filters of the other: `--record`
+  appends every envelope that arrives to a file, one JSON object per
+  line and the envelope whole, before the version is even looked at —
+  the gyroscope whatever `--all` says, an unknown topic, and a stream
+  this client cannot speak, which is exactly what a capture is opened
+  for. A recorder is injected next to the writer, so `main.py` stays
+  the only thing that knows about a file as it is the only thing that
+  knows about `sys.stdout`. Appended and never started over — a tail is
+  stopped and started again all day long, and a `sid` tells the
+  sessions apart on the disk as it does on the screen — and a file that
+  cannot be opened stops the client rather than being read as an
+  absence: a recording asked for on a command line and silently not
+  made is found missing the day it is read, when what it was to hold is
+  already gone. The gaps are measured on **what is printed**,
   not on what arrived: a cadence counting invisible messages would say
   nothing about the blocks being read. Colors are asked for the same
   way whether or not any are worn — a disabled `Paint` hands its text

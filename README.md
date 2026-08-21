@@ -230,8 +230,34 @@ seen, so it is held back — `--all` gives it up. What it hid is still
 counted: a loss behind a message never printed is reported all the
 same.
 
+`--record` keeps the stream instead of merely reading it: every message
+that arrives is appended to a file, one JSON envelope per line, exactly
+as the publisher wrote it.
+
+```bash
+tt-tail --record ~/session.jsonl
 ```
-Usage: tt-tail [-h] -e ENDPOINT [-a] [--no-color]
+
+Reading and recording are two gestures, and the filters of one are not
+the filters of the other: the file holds the gyroscope whether or not
+`--all` shows it, the topics this client knows nothing about, and even
+the messages of a protocol version it cannot read. What a capture is
+worth is being what passed on the wire rather than what a reading made
+of it — a stream that can be replayed, `jq`-ed, or sent along the day
+the two sides of it disagree.
+
+The file is appended to rather than started over. A tail is stopped and
+started again all day long, and the sessions tell themselves apart by
+the identifier of their envelopes on the disk exactly as they do on the
+screen, so no run of it ever costs a capture. Each line is flushed as
+it is written, for the reason a capture exists at all: what is still in
+a buffer when the session is killed is the very part nobody has. A file
+that cannot be opened stops the client there and then — a recording
+asked for and silently not made would be found missing the day it is
+read, and by then what it was to hold is gone.
+
+```
+Usage: tt-tail [-h] -e ENDPOINT [-a] [-r FILE] [--no-color]
 
 Read the term-timer event stream as it goes by.
 
@@ -243,6 +269,11 @@ Options:
                         Default: the first one it binds.
   -a, --all             Show every message, the gyroscope included.
                         Default: False.
+  -r FILE, --record FILE
+                        Append every message that arrives to this file, one
+                        JSON envelope per line, the gyroscope included and
+                        whatever --all shows or hides.
+                        Default: nothing is recorded.
   --no-color            Write the stream without any color, as it already is
                         when the output is not a terminal or NO_COLOR is set.
                         Default: False.

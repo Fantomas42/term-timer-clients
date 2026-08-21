@@ -7,10 +7,15 @@ device. The colors are off everywhere but where they are the subject -
 an escape counted as a column is a block nobody can assert on.
 """
 import io
+import json
 import os
 import sys
 import time
 import unittest
+from collections.abc import Callable
+from contextlib import ExitStack
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Any
 from unittest.mock import MagicMock
 from unittest.mock import patch
@@ -721,6 +726,43 @@ class StreamTailTestCase(unittest.TestCase):
 
         self.assertEqual(len(logs.output), 1)
 
+    def test_nothing_is_kept_unless_somewhere_to_keep_it(self) -> None:
+        """A reader is a reader, and writes nothing down by itself."""
+        self.assertIsNone(self.tail.recorder)
+
+    def test_what_arrives_is_kept_whatever_is_read(self) -> None:
+        """Reading and recording are two gestures, and two filters."""
+        kept: list[dict[str, Any]] = []
+        tail = StreamTail(
+            Renderer(Paint(enabled=False), width=WIDTH),
+            self.written.append,
+            kept.append,
+        )
+
+        tail.dispatch(message('cube.move', {'move': 'R'}))
+        tail.dispatch(message(GYRO, {'quaternion': {'w': 1}}, 1))
+
+        self.assertEqual(
+            [envelope_['topic'] for envelope_ in kept],
+            ['cube.move', GYRO],
+        )
+        self.assertNotIn(GYRO, self.text)
+
+    def test_another_protocol_is_kept_all_the_same(self) -> None:
+        """A stream nobody can read is what a capture is opened for."""
+        kept: list[dict[str, Any]] = []
+        tail = StreamTail(
+            Renderer(Paint(enabled=False), width=WIDTH),
+            self.written.append,
+            kept.append,
+        )
+
+        with self.assertLogs('term_timer_clients.tail.client', 'WARNING'):
+            tail.dispatch(envelope('cube.move', version=2))
+
+        self.assertEqual(len(kept), 1)
+        self.assertEqual(self.written, [])
+
 
 class CaptureTestCase(unittest.TestCase):
     """Real captures, read the way a reader would see them."""
@@ -871,3 +913,116 @@ class MainTestCase(unittest.TestCase):
     def test_main_subscribes_to_both_planes(self) -> None:
         """A tail of one plane is a tail of half a session."""
         self.assertEqual(entry.PREFIXES, ('cube.', 'session.'))
+
+
+class RecordTestCase(unittest.TestCase):
+    """Where the stream is kept, and what is kept of it."""
+
+    def test_nothing_is_recorded_unless_it_is_asked_for(self) -> None:
+        """A tail keeps nothing of what it read by itself."""
+        options = entry.build_parser(CONFIG).parse_args([])
+
+        self.assertIsNone(options.record)
+
+    def test_the_file_is_read_the_way_an_endpoint_is(self) -> None:
+        """A tilde typed by hand is a home rather than a directory."""
+        options = entry.build_parser(CONFIG).parse_args(
+            ['--record', '~/stream.jsonl'],
+        )
+
+        self.assertEqual(options.record, Path.home() / 'stream.jsonl')
+
+    def test_an_envelope_is_kept_whole_and_flushed(self) -> None:
+        """What is still in a buffer is what nobody has."""
+        stream = MagicMock()
+        message_ = envelope('cube.move', {'move': 'R'})
+
+        entry.build_recorder(stream)(message_)
+
+        line = stream.write.call_args.args[0]
+        self.assertTrue(line.endswith('\n'))
+        self.assertEqual(json.loads(line), message_)
+        stream.flush.assert_called_once_with()
+
+    def test_a_file_asked_for_is_appended_to(self) -> None:
+        """A tail started again never costs the capture before it."""
+        with TemporaryDirectory() as directory:
+            recording = Path(directory) / 'stream.jsonl'
+            recording.write_text('{ "kept": true }\n')
+
+            options = entry.build_parser(CONFIG).parse_args(
+                ['--record', str(recording)],
+            )
+
+            with ExitStack() as stack:
+                recorder = entry.open_recording(options, stack)
+
+                if recorder is None:
+                    self.fail('The recording was asked for')
+
+                recorder(envelope('cube.move', {'move': 'R'}))
+
+            lines = recording.read_text().splitlines()
+
+        self.assertEqual(len(lines), 2)
+        self.assertEqual(json.loads(lines[1])['topic'], 'cube.move')
+
+    def test_the_tail_is_handed_what_keeps_the_stream(self) -> None:
+        """What a client writes down is injected like where it writes."""
+        options = entry.build_parser(CONFIG).parse_args([])
+        recorder = MagicMock()
+
+        tail = entry.build_tail(options, io.StringIO(), recorder)
+
+        self.assertIs(tail.recorder, recorder)
+
+    def test_a_recording_nowhere_stops_the_client(self) -> None:
+        """One found missing the day it is read would be too late."""
+        with TemporaryDirectory() as directory:
+            nowhere = Path(directory) / 'missing' / 'stream.jsonl'
+
+            with (
+                patch.object(
+                    sys, 'argv',
+                    ['tt-tail', '-e', ENDPOINT, '-r', str(nowhere)],
+                ),
+                patch.object(entry, 'load_config', return_value={}),
+                patch.object(entry, 'EventStream') as built,
+                self.assertLogs('term_timer_clients.tail.main', 'ERROR'),
+            ):
+                code = entry.main()
+
+        self.assertEqual(code, 1)
+        built.assert_not_called()
+
+    def test_main_keeps_the_stream_where_it_was_asked_to(self) -> None:
+        """The whole of it, from the socket to the line on the disk."""
+        published = [envelope('cube.move', {'move': 'R'})]
+
+        def receive(handler: Callable[[dict[str, Any]], None]) -> None:
+            if not published:
+                raise KeyboardInterrupt
+
+            handler(published.pop())
+
+        stream = MagicMock()
+        stream.receive.side_effect = receive
+
+        with TemporaryDirectory() as directory:
+            recording = Path(directory) / 'stream.jsonl'
+
+            with (
+                patch.object(
+                    sys, 'argv',
+                    ['tt-tail', '-e', ENDPOINT, '-r', str(recording)],
+                ),
+                patch.object(entry, 'load_config', return_value={}),
+                patch.object(entry, 'EventStream', return_value=stream),
+                patch.object(sys, 'stdout', io.StringIO()),
+            ):
+                code = entry.main()
+
+            lines = recording.read_text().splitlines()
+
+        self.assertEqual(code, 0)
+        self.assertEqual(json.loads(lines[0])['topic'], 'cube.move')

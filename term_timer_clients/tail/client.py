@@ -12,6 +12,7 @@ from term_timer_clients.tail.render import Renderer
 logger = logging.getLogger(__name__)
 
 Writer = Callable[[str], None]
+Recorder = Callable[[Envelope], None]
 
 # The gyroscope publishes tens of times a second, and a block each time
 # is a window where nothing else can be seen. It is the one topic held
@@ -37,12 +38,17 @@ class StreamTail:
     does not know is what a client owes the protocol, but a tail that
     hid a topic added tomorrow would be blind on the very message its
     reader opened it for.
+
+    Reading and recording are two gestures and they are kept apart: the
+    writer is handed what a reader is to see, the recorder is handed
+    every envelope that arrived.
     """
 
     def __init__(
             self,
             renderer: Renderer,
             writer: Writer,
+            recorder: Recorder | None = None,
             *,
             everything: bool = False,
     ) -> None:
@@ -52,11 +58,14 @@ class StreamTail:
         Args:
             renderer: What turns an envelope into lines.
             writer: What the lines are handed to.
+            recorder: What every envelope is handed to, none when
+                nothing is being kept.
             everything: Whether the topics held back are shown too.
 
         """
         self.renderer = renderer
         self.writer = writer
+        self.recorder = recorder
         self.everything = everything
 
         self.session_id = ''
@@ -166,6 +175,14 @@ class StreamTail:
             envelope: The message, as the publisher wrote it.
 
         """
+        # Kept before it is read at all: what a capture is worth is
+        # being what passed on the wire rather than what this client
+        # could make of it. A version it cannot speak, a topic it does
+        # not know and a gyroscope nobody is shown are exactly what a
+        # recording is opened for
+        if self.recorder is not None:
+            self.recorder(envelope)
+
         version = envelope.get('v')
 
         if version != PROTOCOL_VERSION:
