@@ -125,9 +125,10 @@ of `cube.gyro`. Applying both would turn the cube twice.
 |---|---|
 | `session.state` | `state`, `previous`, `at` — the nine states of a solve: `configure`, `init`, `scrambling`, `scrambled`, `inspecting`, `inspected`, `solving`, `stop`, `saving` |
 | `session.scramble` | `scramble`, `oriented`, `rotation`, `facelets`, `cube_size`, `index`, `total` |
-| `session.solve` | The solve as the session file writes it — `time` in nanoseconds, `moves`, `scramble`, `device`, `flag`… — plus `dnf`, `counter`, `session`, `cube_size`, `free_play` and `steps` |
+| `session.solve` | The solve as the session file writes it — `time` in nanoseconds, `moves`, `scramble`, `device`, `flag`… — plus `counter`, `session`, `cube_size`, `free_play` and `steps` |
 | `session.record` | `kind` (`single`, `ao5`, `ao12`, …), `scope` (`session`, `case`), `value`, `previous`, `delta`, `counter`, plus `case` on a `case` scope |
 | `session.train` | `step`, `family`, `case`, `name`, `algorithm`, `time`, `dnf`, `counter`, `free_play`, `rating`, `state`, `due` |
+| `session.drill` | `algorithm`, `htm`, `time`, `tps`, `fluency`, `counter` — one message per completed rep |
 | `session.end` | `reason` (`closed`, `interrupted`, `crashed`) — the last message of the stream |
 | `session.step` | Reserved. Waits for a live method detection, which does not exist yet |
 | `session.rotation` | Reserved. Waits for a subscriber asking for the rotations built downstream of the drivers |
@@ -140,6 +141,13 @@ settled — after the prompt where a keyboard solve is flagged DNF or
 the stream is what reaches the file, with the flag it ends up with. An
 attempt that was discarded is never published at all.
 
+`flag` is always in `session.solve`, and empty when the solve carries
+none. It is the only thing said about the fate of the attempt, `DNF`
+and `+2` alike: no boolean is derived next to it, so there is no second
+spelling to disagree with. The `time` is the raw one, never corrected —
+a `+2` is announced by its flag, and the two seconds are the client's
+to add if it displays a penalised time.
+
 `at`, in `session.state`, is a monotonic counter in nanoseconds, read
 from the clock the stopwatch times solves on. It has no origin a
 client can relate to anything: only the difference between two of them
@@ -151,11 +159,40 @@ compares against every timing a trained case ever got, and names that
 case, so two sessions of the same case keep on breaking the same
 records.
 
+A record is published the moment it is found, which is the moment it
+is celebrated on screen — before the save prompt, and whatever that
+prompt decides. A record is a record, saved or not: the stream is the
+mirror of the session as it was lived, not of the file it wrote.
+Discarding the attempt drops the timing the comparison was read
+against, it does not undo the comparison. On a `case` scope this means
+the very same record can be announced twice: throwing away a personal
+best and setting it again republishes the same `value` against the
+same `previous`, exactly as the screen celebrates it twice.
+
+The `value`, `previous` and `delta` of `session.record` are
+**nanoseconds**, in both scopes, like the `time` of `session.solve` —
+a personal best of eight seconds reads `8_000_000_000`.
+
+`index` in `session.scramble` and `counter` in `session.solve`,
+`session.record`, `session.train` and `session.drill` are the same
+rank: that of the attempt in the running session, the number the screen
+prints next to `Scramble`, `Duration`, `Analysis` and `Rep`. One attempt says one rank on
+every topic it does publish on, free play or not, and that rank is
+what ties a solve to its scramble and to the records it broke.
+
 `session.train` publishes every attempt that was executed, whether or
 not it left anything behind: a free play run writes no training file,
 and a DNF drilled without FSRS moves no card. `free_play` is what tells
 the two apart. Only a discarded attempt stays out of the stream, having
 dropped both its timing and its card.
+
+`session.drill` publishes each rep of a `drill` session, timed on the
+screen and recorded nowhere else: a drill writes no file, so the stream
+is the only trace it leaves. `time` is in nanoseconds, `tps` counts the
+turns of the drilled algorithm per second, and `fluency` scores the
+regularity of the execution out of 100, `0` when the rep was typed
+rather than turned. A rep abandoned on a bad move is never published:
+it has no timing, and the drill stops right after it.
 
 ## The end of a stream
 
