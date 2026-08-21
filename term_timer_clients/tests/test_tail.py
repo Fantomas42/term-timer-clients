@@ -15,6 +15,7 @@ from typing import Any
 from unittest.mock import MagicMock
 from unittest.mock import patch
 
+from term_timer_clients.protocol import SESSION_END_TOPIC
 from term_timer_clients.tail import ansi
 from term_timer_clients.tail import main as entry
 from term_timer_clients.tail.ansi import Paint
@@ -486,6 +487,50 @@ class EnvelopeTestCase(BlockTestCase):
 
         self.assertIn(ansi.STRING, lines[1])
 
+    def test_the_end_of_a_session_is_closed_on_a_line(self) -> None:
+        """A stream that is over looks like a quiet one without it."""
+        line = self.renderer.farewell(
+            message(SESSION_END_TOPIC, {'reason': 'interrupted'}),
+        )
+
+        self.assertIn('end of session a3f1c8d2', line)
+        self.assertIn('interrupted', line)
+        self.assertEqual(len(line), WIDTH)
+
+    def test_a_farewell_with_no_reason_is_still_drawn(self) -> None:
+        """What ended a session is not what says it ended."""
+        empty = message(SESSION_END_TOPIC)
+        empty['data'] = None
+
+        line = self.renderer.farewell(empty)
+
+        self.assertIn('end of session a3f1c8d2', line)
+        self.assertEqual(len(line), WIDTH)
+
+    def test_a_reason_is_worn_by_what_it_is(self) -> None:
+        """An end nobody asked for is not one that was."""
+        renderer = Renderer(Paint(), width=WIDTH)
+
+        self.assertIn(ansi.ALERT, renderer.block(
+            message(SESSION_END_TOPIC, {'reason': 'crashed'}), -1, -1,
+        )[1])
+        self.assertIn(ansi.BREAK, renderer.block(
+            message(SESSION_END_TOPIC, {'reason': 'interrupted'}), -1, -1,
+        )[1])
+        link = message('cube.link', {'connected': False, 'reason': 'lost'})
+
+        self.assertIn(ansi.ALERT, renderer.block(link, -1, -1)[2])
+
+    def test_a_reason_of_something_else_is_left_alone(self) -> None:
+        """Only what this protocol names is worn as one of its reasons."""
+        renderer = Renderer(Paint(), width=WIDTH)
+
+        lines = renderer.block(
+            message('session.train', {'reason': 'review'}), -1, -1,
+        )
+
+        self.assertIn(ansi.STRING, lines[1])
+
     def test_the_width_follows_the_terminal(self) -> None:
         """A renderer given no width reads the one it is shown on."""
         renderer = Renderer(Paint(enabled=False))
@@ -633,6 +678,31 @@ class StreamTailTestCase(unittest.TestCase):
         self.tail.dispatch(broken)
 
         self.assertIn('cube.move', self.text)
+
+    def test_the_end_of_a_session_closes_it(self) -> None:
+        """The farewell is drawn across, under the block that carries it."""
+        self.tail.dispatch(message('cube.move', {'move': 'R'}, 0))
+        self.tail.dispatch(
+            message(SESSION_END_TOPIC, {'reason': 'closed'}, 1),
+        )
+
+        self.assertIn(SESSION_END_TOPIC, self.written[-2])
+        self.assertIn('end of session a3f1c8d2', self.written[-1])
+        self.assertIn('closed', self.written[-1])
+
+    def test_a_tail_goes_on_reading_after_the_end(self) -> None:
+        """A publisher that comes back is read by the tail already there."""
+        self.tail.dispatch(
+            message(SESSION_END_TOPIC, {'reason': 'interrupted'}, 0),
+        )
+
+        restarted = message('cube.move', {'move': 'R'}, 0)
+        restarted['sid'] = 'ffffffff'
+        self.tail.dispatch(restarted)
+
+        self.assertIn('session ffffffff', self.text)
+        self.assertIn('cube.move', self.text)
+        self.assertNotIn('lost', self.text)
 
     def test_another_protocol_is_never_read(self) -> None:
         """A stream this client does not speak is left alone."""

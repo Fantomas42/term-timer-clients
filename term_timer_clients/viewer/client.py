@@ -13,6 +13,7 @@ from cubing_algs.vcube import VCube
 
 from term_timer_clients.protocol import CUBE_PREFIX
 from term_timer_clients.protocol import PROTOCOL_VERSION
+from term_timer_clients.protocol import SESSION_END_TOPIC
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -93,6 +94,7 @@ class CubeCast:
             'cube.hardware': self.name_cube,
             'cube.battery': self.charge_cube,
             LINK_TOPIC: self.link_cube,
+            SESSION_END_TOPIC: self.end_session,
         }
 
     @property
@@ -352,17 +354,54 @@ class CubeCast:
         very state the next connection starts from, and a window that
         closed itself would take the session with it.
 
-        What is described goes with the link. A cube that comes back
-        describes itself again at the next connection, and its pieces
-        wait for that state rather than gathering on the colors of a
-        link that is no longer up: what was published belongs to the
-        connection it was published in.
+        What is described goes with the link, and what a cube that
+        comes back has to say again is what ``unlink()`` explains.
 
         Args:
             data: Payload of a ``cube.link`` message.
 
         """
-        self.connected = bool(data.get('connected', True))
+        if data.get('connected', True):
+            self.connected = True
+            return
 
-        if not self.connected:
-            self.described = False
+        self.unlink()
+
+    def end_session(self, data: dict[str, Any]) -> None:
+        """
+        Take the cube down when the publisher says its last word.
+
+        Nothing of the session follows this message, so the cube it
+        was describing is gone whatever ended it: a stream that is over
+        publishes no state and no move, and a cube nobody publishes any
+        more is a cube nobody is connected to. It is the picture a link
+        that drops already paints, and the reason is only ever logged -
+        a session closed, interrupted or carried away by an error
+        leaves the very same window behind.
+
+        The window stays open all the same, as it does for a cube that
+        left: closing it would take the session with it, and a
+        publisher that comes back - `interrupted` and `crashed` are
+        sessions that may well - finds somewhere to be shown again.
+
+        Args:
+            data: Payload of a ``session.end`` message.
+
+        """
+        reason = data.get('reason')
+
+        logger.info('End of the session: %s', reason or 'no reason given')
+
+        self.unlink()
+
+    def unlink(self) -> None:
+        """
+        Let the cube go, and what it said of itself with it.
+
+        A state belongs to the connection it was published in: a cube
+        that comes back describes itself again, so its pieces wait for
+        that state rather than gathering on the colors of a link that
+        is no longer up.
+        """
+        self.connected = False
+        self.described = False

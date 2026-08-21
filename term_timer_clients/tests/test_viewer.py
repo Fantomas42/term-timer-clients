@@ -29,6 +29,8 @@ from cubing_algs.display.gl.transforms import ORIGIN
 from cubing_algs.display.gl.transforms import Vec3
 from cubing_algs.vcube import VCube
 
+from term_timer_clients.protocol import SESSION_END_TOPIC
+from term_timer_clients.protocol import SESSION_PREFIX
 from term_timer_clients.tests.fixtures import envelope
 from term_timer_clients.tests.fixtures import envelopes
 from term_timer_clients.viewer import host as window
@@ -45,6 +47,7 @@ from term_timer_clients.viewer.assembly import Flight
 from term_timer_clients.viewer.assembly import breath
 from term_timer_clients.viewer.assembly import tumble_axis
 from term_timer_clients.viewer.assembly import waiting_core
+from term_timer_clients.viewer.client import WINDOW_OFFLINE
 from term_timer_clients.viewer.client import WINDOW_TITLE
 from term_timer_clients.viewer.client import CubeCast
 from term_timer_clients.viewer.host import TRANSPARENT
@@ -498,6 +501,70 @@ class CubeLinkTestCase(ClientTestCase):
 
         self.assertFalse(self.view.described)
         self.assertTrue(self.viewer.cube.is_solved)
+
+
+class SessionEndTestCase(ClientTestCase):
+    """The farewell of a publisher, and what is left in the window."""
+
+    def test_a_session_that_ends_takes_the_cube_with_it(self) -> None:
+        """A stream that is over describes no cube any more."""
+        self.view.dispatch(envelope('cube.facelets', {'facelets': FACELETS}))
+
+        self.assertTrue(self.view.present)
+
+        self.view.dispatch(
+            envelope(SESSION_END_TOPIC, {'reason': 'closed'}),
+        )
+
+        self.assertFalse(self.view.connected)
+        self.assertFalse(self.view.described)
+        self.assertFalse(self.view.present)
+
+    def test_every_reason_ends_the_same_window(self) -> None:
+        """What ended a session says nothing about what is drawn."""
+        for reason in ('closed', 'interrupted', 'crashed', ''):
+            with self.subTest(reason=reason):
+                view = CubeCast(self.viewer, self.tracker)
+                view.dispatch(
+                    envelope('cube.facelets', {'facelets': FACELETS}),
+                )
+                view.dispatch(envelope(SESSION_END_TOPIC, {'reason': reason}))
+
+                self.assertFalse(view.present)
+
+    def test_the_end_of_a_session_is_reported(self) -> None:
+        """A reader of the logs is told why the stream stopped."""
+        with self.assertLogs(
+                'term_timer_clients.viewer.client', 'INFO',
+        ) as logs:
+            self.view.dispatch(
+                envelope(SESSION_END_TOPIC, {'reason': 'crashed'}),
+            )
+
+        self.assertIn('crashed', logs.output[0])
+
+    def test_a_session_that_ends_says_so_in_the_title(self) -> None:
+        """The window that stays open says what it is showing."""
+        self.view.dispatch(envelope('cube.hardware', {'hardware_name': 'GAN'}))
+        self.view.dispatch(envelope(SESSION_END_TOPIC, {'reason': 'closed'}))
+
+        self.assertIn(WINDOW_OFFLINE, self.view.title)
+
+    def test_a_cube_comes_back_with_the_next_session(self) -> None:
+        """A publisher that comes back finds somewhere to be shown."""
+        self.view.dispatch(envelope('cube.facelets', {'facelets': FACELETS}))
+        self.view.dispatch(
+            envelope(SESSION_END_TOPIC, {'reason': 'interrupted'}),
+        )
+
+        self.view.dispatch(
+            envelope(
+                'cube.facelets', {'facelets': FACELETS},
+                session_id='ffffffff',
+            ),
+        )
+
+        self.assertTrue(self.view.present)
 
 
 def cube_place(instance: CubieInstance) -> Vec3:
@@ -1678,6 +1745,21 @@ class MainTestCase(unittest.TestCase):
             self.assertEqual(run_main(host, stream), 1)
 
         stream.stop.assert_called_once_with()
+
+    def test_main_hears_the_end_of_the_stream(self) -> None:
+        """A window takes the one message of the session plane it needs."""
+        with (
+            patch.object(sys, 'argv', ['cube-cast', '-e', ENDPOINT]),
+            patch.object(entry, 'load_config', return_value={}),
+            patch.object(entry, 'build_host', return_value=MagicMock()),
+            patch.object(entry, 'EventStream') as stream,
+        ):
+            self.assertEqual(entry.main(), 0)
+
+        stream.assert_called_once_with(ENDPOINT, entry.PREFIXES)
+
+        self.assertIn(SESSION_END_TOPIC, entry.PREFIXES)
+        self.assertNotIn(SESSION_PREFIX, entry.PREFIXES)
 
     def test_main_interrupted(self) -> None:
         """An interruption from the keyboard closes the stream."""

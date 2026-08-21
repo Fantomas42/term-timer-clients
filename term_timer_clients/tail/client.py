@@ -5,6 +5,7 @@ from typing import Any
 from typing import Final
 
 from term_timer_clients.protocol import PROTOCOL_VERSION
+from term_timer_clients.protocol import SESSION_END_TOPIC
 from term_timer_clients.protocol import Envelope
 from term_timer_clients.tail.render import Renderer
 
@@ -200,3 +201,23 @@ class StreamTail:
         )
 
         self.write(*self.renderer.block(envelope, gap, topic_gap))
+
+        if topic == SESSION_END_TOPIC:
+            self.end_session(envelope)
+
+    def end_session(self, envelope: Envelope) -> None:
+        """
+        Close the session, and go on reading the stream.
+
+        Nothing of this session follows its farewell, but the reader is
+        not done: a publisher binds the endpoint a subscriber is
+        already connected to, so a tail that ended with the session
+        would have to be started again for the next one - and what
+        comes back is told apart by the identifier of its envelopes,
+        which is what announces it in turn.
+
+        Args:
+            envelope: The ``session.end`` message, already printed.
+
+        """
+        self.write(self.renderer.farewell(envelope))

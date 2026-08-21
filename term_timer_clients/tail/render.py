@@ -75,6 +75,20 @@ SOLVE_STATES: Final = frozenset({
     'inspected', 'solving', 'stop', 'saving',
 })
 
+# What ended a link or a session, and the one field the stream names
+# it under. Read off the value like a state is, but only under that
+# name: a reason is never anything else here, where a "state" is what
+# a solve, a cube and a card all call themselves
+REASON_FIELDS: Final = frozenset({'reason'})
+
+REASON_COLORS: Final = {
+    'opened': ansi.TRUE,
+    'closed': ansi.HIGHLIGHT,
+    'interrupted': ansi.BREAK,
+    'lost': ansi.ALERT,
+    'crashed': ansi.ALERT,
+}
+
 STATE_COLORS: Final = {
     'scrambling': ansi.BREAK,
     'inspecting': ansi.BREAK,
@@ -186,6 +200,54 @@ def format_facelets(value: str) -> str:
     )
 
 
+def text_codes(key: str, value: object) -> tuple[str, ...]:
+    """
+    Give a value written as text the color of what it says.
+
+    Args:
+        key: Name of the field it came under.
+        value: The value itself.
+
+    Returns:
+        The colors it is painted with.
+
+    """
+    if key in HIGHLIGHT_FIELDS:
+        return (ansi.HIGHLIGHT, ansi.BOLD)
+
+    if key in REASON_FIELDS and value in REASON_COLORS:
+        return (REASON_COLORS[str(value)], ansi.BOLD)
+
+    if value in SOLVE_STATES:
+        return (STATE_COLORS.get(str(value), ansi.HIGHLIGHT), ansi.BOLD)
+
+    return (ansi.STRING,)
+
+
+def scalar_codes(key: str, value: object) -> tuple[str, ...]:
+    """
+    Give a value the color of what it is.
+
+    Args:
+        key: Name of the field it came under.
+        value: The value itself.
+
+    Returns:
+        The colors it is painted with.
+
+    """
+    if value is None:
+        return (ansi.NOTHING,)
+
+    if isinstance(value, bool):
+        return (ansi.TRUE,) if value else (ansi.FALSE,)
+
+    if isinstance(value, int | float):
+        return (ansi.NUMBER,)
+
+    return text_codes(key, value)
+
+
 def is_scalar(value: object) -> bool:
     """
     Say whether a value is one this client writes on a single line.
@@ -282,6 +344,41 @@ class Renderer:
         )
 
         return self.rule(text, ansi.BREAK)
+
+    def farewell(self, envelope: Envelope) -> str:
+        """
+        Close the session the messages before belonged to.
+
+        A stream that is over and one where nothing is happening look
+        alike from here - both say nothing more - and the farewell is
+        the only thing that ever tells them apart. So it is drawn
+        across the terminal rather than left to scroll by with the
+        block it comes from, the way the session was opened.
+
+        Args:
+            envelope: The ``session.end`` message.
+
+        Returns:
+            The line the session closes on.
+
+        """
+        self.measure()
+
+        session_id = str(envelope.get('sid', ''))
+        data = envelope.get('data')
+        reason = (
+            str(data.get('reason', ''))
+            if isinstance(data, Mapping)
+            else ''
+        )
+
+        text = SEPARATOR.join(
+            part
+            for part in (f'end of session { session_id }'.strip(), reason)
+            if part
+        )
+
+        return self.rule(text, REASON_COLORS.get(reason, ansi.BREAK))
 
     def loss(self, count: int) -> str:
         """
@@ -433,36 +530,6 @@ class Renderer:
 
         return str(value)
 
-    @staticmethod
-    def scalar_codes(key: str, value: object) -> tuple[str, ...]:
-        """
-        Give a value the color of what it is.
-
-        Args:
-            key: Name of the field it came under.
-            value: The value itself.
-
-        Returns:
-            The colors it is painted with.
-
-        """
-        if value is None:
-            return (ansi.NOTHING,)
-
-        if isinstance(value, bool):
-            return (ansi.TRUE,) if value else (ansi.FALSE,)
-
-        if isinstance(value, int | float):
-            return (ansi.NUMBER,)
-
-        if key in HIGHLIGHT_FIELDS:
-            return (ansi.HIGHLIGHT, ansi.BOLD)
-
-        if value in SOLVE_STATES:
-            return (STATE_COLORS.get(str(value), ansi.HIGHLIGHT), ansi.BOLD)
-
-        return (ansi.STRING,)
-
     def scalar(self, key: str, value: object) -> Painted:
         """
         Write a value, and say what it is painted with.
@@ -479,7 +546,7 @@ class Renderer:
             The value as it reads, and the colors it wears.
 
         """
-        return self.scalar_text(key, value), self.scalar_codes(key, value)
+        return self.scalar_text(key, value), scalar_codes(key, value)
 
     def listing(self, key: str, values: Sequence[Any]) -> Painted:
         """

@@ -27,10 +27,18 @@ STREAM_POLL_TIMEOUT: Final = 200
 
 # The hardware plane of the stream. ZeroMQ filters on the prefix of the
 # topic frame, so one string covers all of it and leaves the session
-# plane, which a viewer has no use for, on the wire.
+# plane, which a viewer only ever wants the end of, on the wire.
 CUBE_PREFIX: Final = 'cube.'
 
 SESSION_PREFIX: Final = 'session.'
+
+# The farewell of a publisher, and the only message it owes its
+# subscribers: nothing of the session follows it, and a publisher that
+# simply stops falls silent, which is exactly what a session where
+# nothing happens looks like. A complete topic name filters as well as
+# a plane does, so a client takes the end of the stream without taking
+# the whole session plane with it.
+SESSION_END_TOPIC: Final = 'session.end'
 
 
 def parse_endpoint(token: str) -> str:

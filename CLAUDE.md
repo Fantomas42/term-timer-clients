@@ -64,7 +64,13 @@ Three layers, and the boundaries between them are the point:
 - **`viewer/client.py`** — `CubeCast`, the whole of `cube-cast`, and it
   touches neither a socket nor a window. An envelope comes in and a
   viewer method is called: topics are dispatched through a
-  `self.handlers` dict. This is where a new topic is handled.
+  `self.handlers` dict. This is where a new topic is handled. Two of
+  them take the cube down and they end in the same `unlink()`: a link
+  that drops, and `session.end`, the farewell of the publisher. What
+  ended the session only ever reaches the log — a session `closed`,
+  `interrupted` or `crashed` leaves the very same window behind,
+  because a stream that is over publishes no state and no move
+  whatever carried it away.
 - **`viewer/assembly.py`** — the pieces of the cube imploding around
   the ball core, and exploding away from it when the link drops.
   Pure: a scene comes in, a scene comes out, its pieces moved, and it
@@ -191,7 +197,14 @@ Three layers, and the boundaries between them are the point:
   that, but a tail hiding the one message its reader opened it for
   would be of no use. `QUIET_TOPICS` is the single exception, and it
   is about cadence rather than about meaning — the gyroscope publishes
-  tens of times a second, and `--all` gives it up. A message held back
+  tens of times a second, and `--all` gives it up. `session.end` is
+  the one topic that is more than its block: the farewell is drawn
+  across the terminal under it, the way the session was opened, because
+  a stream that is over and one where nothing happens both look like
+  silence and nothing else tells them apart. The tail goes on reading
+  all the same — a publisher binds the endpoint a subscriber is already
+  connected to, and the next session announces itself by the `sid` of
+  its envelopes. A message held back
   is still counted in the sequence, so a loss it hid is reported
   rather than blamed on the topic that comes next; the two prefixes
   cover everything the publisher emits, which is what makes a break in
@@ -269,7 +282,15 @@ A cube **announces its departure and never its arrival** — `cube.link`
 is published by term-timer rather than by a driver — and a client
 opened in the middle of a session has heard neither. So the cube
 talking at all is what says it is there, and `cube.link` is the only
-topic that ever says it is gone.
+topic that ever says it is gone — with `session.end`, which says it of
+the publisher rather than of the cube and comes to the same thing: a
+cube nobody publishes any more is a cube nobody is connected to. It
+can also **go missing**, a process killed outright publishing nothing
+at all, so nothing here ever waits for it: it is what spares a client
+the wait rather than what a client is built on. Neither closes the
+window — that would take the session with it — and a publisher that
+comes back finds somewhere to be shown, `interrupted` and `crashed`
+being sessions that may well.
 
 `CubeCast.present` is two conditions, and they answer the two events
 the effect is made of: `connected` says there is a cube, `described`
@@ -305,7 +326,10 @@ A client subscribes to the prefixes it needs (`CUBE_PREFIX`,
 `SESSION_PREFIX`) — ZeroMQ filters by prefix, and no complete topic
 name is a prefix of another, which is why the move catch-up is
 `cube.history` and not
-`cube.move_history`.
+`cube.move_history`. A whole topic name filters just as well, which is
+what `cube-cast` subscribes with: `SESSION_END_TOPIC` next to the cube
+plane, the one message of the session plane a window has any use for,
+and the rest of what term-timer knows alone stays on the wire.
 
 ## Tests
 

@@ -22,6 +22,8 @@ from term_timer_clients.config import Config
 from term_timer_clients.config import configured_cube
 from term_timer_clients.config import configured_endpoint
 from term_timer_clients.config import load_config
+from term_timer_clients.protocol import CUBE_PREFIX
+from term_timer_clients.protocol import SESSION_END_TOPIC
 from term_timer_clients.protocol import EventStream
 from term_timer_clients.viewer.client import CubeCast
 from term_timer_clients.viewer.host import CubeCastHost
@@ -50,6 +52,13 @@ DEFAULT_MODE = ''
 # opened with, and a window opened turned would be lost on the first
 # reset otherwise
 DEFAULT_ROTATION = ''
+
+# The hardware plane, and the one message of the other one a window has
+# any use for: a stream that is over describes no cube any more, and a
+# viewer that never heard of its end would keep showing the cube of a
+# session nobody is publishing. Everything else term-timer knows alone
+# stays on the wire.
+PREFIXES = (CUBE_PREFIX, SESSION_END_TOPIC)
 
 
 def configured_choice(
@@ -305,7 +314,7 @@ def main() -> int:
     options = build_parser(load_config()).parse_args(sys.argv[1:])
 
     host = build_host(options)
-    stream = EventStream(options.endpoint)
+    stream = EventStream(options.endpoint, PREFIXES)
 
     # Read before the window opens: a subscriber connects to a publisher
     # that may not be there yet, and misses nothing while it waits

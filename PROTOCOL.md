@@ -126,12 +126,40 @@ of `cube.gyro`. Applying both would turn the cube twice.
 | `session.solve` | The solve as the session file writes it — `time` in nanoseconds, `moves`, `scramble`, `device`, `flag`… — plus `dnf`, `counter`, `session`, `cube_size`, `free_play` and `steps` |
 | `session.record` | `kind` (`single`, `ao5`, `ao12`, …), `scope` (`session`), `value`, `previous`, `delta`, `counter` |
 | `session.train` | `step`, `family`, `case`, `name`, `algorithm`, `time`, `dnf`, `counter`, `rating`, `state`, `due` |
+| `session.end` | `reason` (`closed`, `interrupted`, `crashed`) — the last message of the stream |
 | `session.step` | Reserved. Waits for a live method detection, which does not exist yet |
 | `session.rotation` | Reserved. Waits for a subscriber asking for the rotations built downstream of the drivers |
 
 `session.solve` is spelled like the stored solve on purpose: a client
 writing down what it receives records a readable session, without a
 single field to translate.
+
+## The end of a stream
+
+`session.end` is published on the way out, before the socket closes, and
+nothing of the session follows it. It is the only message a publisher
+owes its subscribers, because it is the only one no later message makes
+up for: a publisher that stops simply falls silent, and silence is what
+a session where nothing happens looks like.
+
+| `reason` | What ended the session |
+|---|---|
+| `closed` | The command is over |
+| `interrupted` | Ctrl+C |
+| `crashed` | An error carried the process away |
+
+Whatever the reason, the stream is over and the state a client built
+from it can go: `closed` is a session to forget, `interrupted` and
+`crashed` are sessions that may well come back. What comes back is told
+apart by the `sid` of the envelope, a new one meaning a new session to
+start over on.
+
+**The farewell can go missing**, so no client may wait for it forever.
+A process killed outright — `SIGKILL`, a `SIGTERM` nobody handles, a
+machine going down — publishes nothing at all, and a subscriber that
+stopped reading is dropped rather than waited for. A client that has to
+know whether a publisher is still there times out on the silence, and
+takes the farewell as what spares it the wait.
 
 ## Evolution rules
 
