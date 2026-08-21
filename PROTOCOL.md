@@ -27,7 +27,7 @@ its configuration file:
 active = false
 endpoints = [
   "ipc://~/.term_timer/cube.ipc",
-  "tcp://127.0.0.1:5555",
+  "tcp://127.0.0.1:5333",
 ]
 ```
 
@@ -109,7 +109,9 @@ every one of them.
 | `cube.link` | `connected` (bool), `reason` (`opened`, `closed`, `lost`) |
 
 A cube announces its departure and never its arrival, so `cube.link` is
-published by the application rather than by a driver. Fields a given
+published by the application rather than by a driver — a replay
+announces its own link the same way, so that a client waiting for the
+cube to show up cannot tell a recording from hardware. Fields a given
 cube does not report are simply absent: a client reads what it needs
 and ignores the rest.
 
@@ -124,15 +126,36 @@ of `cube.gyro`. Applying both would turn the cube twice.
 | `session.state` | `state`, `previous`, `at` — the nine states of a solve: `configure`, `init`, `scrambling`, `scrambled`, `inspecting`, `inspected`, `solving`, `stop`, `saving` |
 | `session.scramble` | `scramble`, `oriented`, `rotation`, `facelets`, `cube_size`, `index`, `total` |
 | `session.solve` | The solve as the session file writes it — `time` in nanoseconds, `moves`, `scramble`, `device`, `flag`… — plus `dnf`, `counter`, `session`, `cube_size`, `free_play` and `steps` |
-| `session.record` | `kind` (`single`, `ao5`, `ao12`, …), `scope` (`session`), `value`, `previous`, `delta`, `counter` |
-| `session.train` | `step`, `family`, `case`, `name`, `algorithm`, `time`, `dnf`, `counter`, `rating`, `state`, `due` |
+| `session.record` | `kind` (`single`, `ao5`, `ao12`, …), `scope` (`session`, `case`), `value`, `previous`, `delta`, `counter`, plus `case` on a `case` scope |
+| `session.train` | `step`, `family`, `case`, `name`, `algorithm`, `time`, `dnf`, `counter`, `free_play`, `rating`, `state`, `due` |
 | `session.end` | `reason` (`closed`, `interrupted`, `crashed`) — the last message of the stream |
 | `session.step` | Reserved. Waits for a live method detection, which does not exist yet |
 | `session.rotation` | Reserved. Waits for a subscriber asking for the rotations built downstream of the drivers |
 
 `session.solve` is spelled like the stored solve on purpose: a client
 writing down what it receives records a readable session, without a
-single field to translate.
+single field to translate. It is published once the attempt is
+settled — after the prompt where a keyboard solve is flagged DNF or
++2, and where a discarded or retried one is dropped — so what reaches
+the stream is what reaches the file, with the flag it ends up with. An
+attempt that was discarded is never published at all.
+
+`at`, in `session.state`, is a monotonic counter in nanoseconds, read
+from the clock the stopwatch times solves on. It has no origin a
+client can relate to anything: only the difference between two of them
+means something, and the wall clock is in the `ts` of the envelope.
+
+`session.record` says what a value was read against. A `session` scope
+compares against the solves of the running session; a `case` scope
+compares against every timing a trained case ever got, and names that
+case, so two sessions of the same case keep on breaking the same
+records.
+
+`session.train` publishes every attempt that was executed, whether or
+not it left anything behind: a free play run writes no training file,
+and a DNF drilled without FSRS moves no card. `free_play` is what tells
+the two apart. Only a discarded attempt stays out of the stream, having
+dropped both its timing and its card.
 
 ## The end of a stream
 
