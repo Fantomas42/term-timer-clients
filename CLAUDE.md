@@ -331,6 +331,32 @@ what `cube-cast` subscribes with: `SESSION_END_TOPIC` next to the cube
 plane, the one message of the session plane a window has any use for,
 and the rest of what term-timer knows alone stays on the wire.
 
+## Publishers
+
+`publishers/` is the other side of the stream, and it is debug material
+rather than a client: `phantom_cube.py` binds where term-timer binds
+and publishes the frames a cube would, so a window is watched with no
+hardware and no session at all. It sits outside `term_timer_clients`
+and outside `[project.scripts]` on purpose — nothing imports it,
+nothing installs it, and **nothing tests it**: what it is worth is
+read in the window it opens, and a test of it would be a test of the
+protocol written twice. It still passes `ruff`, and its prints — the
+whole of what a debug script says — are what the `# ruff: noqa: T201`
+of its header is for.
+
+It publishes in the frame of the *hardware*: `--setup` and
+`--algorithm` are written the way the hands write them, and
+`--orientation` turns them back the way a cube held that way would
+report them, so the very translation `CubeCast.translate()` undoes is
+done there first. Each pause of the cycle is an argument of its own,
+because what is being debugged is never the same moment twice. `sid`
+is drawn at every run, which is what makes `CubeCast.restart()`
+reachable by restarting the script, and Ctrl+C drops the link rather
+than merely falling silent. It publishes the `cube.*` plane and
+nothing else — the plane a cube produces by itself, and the whole of
+what a script with no session behind it can honestly say; what only
+term-timer knows waits for a publisher of its own.
+
 ## Tests
 
 `tests/replays/gan_gen2/*.json` are real captures: a list of driver
