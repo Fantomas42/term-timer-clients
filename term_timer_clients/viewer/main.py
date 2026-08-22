@@ -364,6 +364,16 @@ def build_parser(config: Config) -> ArgumentParser:
         ),
     )
     parser.add_argument(
+        '-g', '--no-gyroscope',
+        action='store_true',
+        help=(
+            'Leave the cube where the camera puts it, deaf to the\n'
+            'gyroscope: the window is framed by --rotation and the\n'
+            'mouse, and the moves alone come from the cube.\n'
+            'Default: False.'
+        ),
+    )
+    parser.add_argument(
         '--no-msaa',
         action='store_true',
         help=(
@@ -387,13 +397,24 @@ def build_host(options: Namespace) -> CubeCastHost:
         The host, ready to be opened.
 
     """
-    tracker = OrientationTracker(basis=SENSOR_BASIS)
+    # A window deaf to the gyroscope is one with no tracker at all,
+    # rather than one dropping the messages as they arrive: it is the
+    # very same absence as a stream where nothing turns the cube, and
+    # the viewer already draws a cube nobody orients from the camera
+    # alone. The quaternions still arrive, and `turn_cube()` has
+    # nothing to feed them to.
+    tracker = (
+        None
+        if options.no_gyroscope
+        else OrientationTracker(basis=SENSOR_BASIS)
+    )
 
     # A mode is resolved once, on the solved cube the viewer is built
     # with, and what is kept of it is the mask: the stream reposes the
     # cube on every state it describes, and the orientation a mode
     # carries would be thrown away with it. Here it would be anyway -
-    # the window is held by the gyroscope of the cube.
+    # what holds the window is the gyroscope of the cube, or the
+    # camera alone when nothing is listening to it.
     viewer = Viewer(
         cube=VCube(),
         palette=options.palette,

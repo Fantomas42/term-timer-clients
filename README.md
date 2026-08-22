@@ -83,7 +83,7 @@ underneath is kept, and it is the one the next connection starts from.
 ```
 Usage: cube-cast [-h] [-e ENDPOINT] [-o ORIENTATION] [-p PALETTE] [-m MODE]
                  [-r ROTATION] [-w WIDTHxHEIGHT] [-b MILLISECONDS]
-                 [-l MILLISECONDS] [-t] [--no-msaa]
+                 [-l MILLISECONDS] [-t] [-g] [--no-msaa]
 
 Watch a cube in 3D, from the term-timer event stream.
 
@@ -119,6 +119,10 @@ Options:
   -t, --transparent     Lay the cube on the desktop: no background, no window
                         decoration, and floating above everything.
                         Default: False.
+  -g, --no-gyroscope    Leave the cube where the camera puts it, deaf to the
+                        gyroscope: the window is framed by --rotation and the
+                        mouse, and the moves alone come from the cube.
+                        Default: False.
   --no-msaa             Draw the cube into the window itself, aliased but with
                         nothing in between.
                         Default: False.
@@ -138,6 +142,14 @@ R face, `y0x0` looks the cube straight in the F face. It frames the
 cube rather than turning it — the cube is turned by the hardware
 alone — and `Space` comes back to it, so a window opened on an angle
 stays on it.
+
+`--no-gyroscope` leaves the cube where the camera puts it. The
+gyroscope of a cube is the one thing the window shows that no hand
+asked for — a cube laid down keeps drifting, and a cube held keeps
+shaking — so a window opened to watch the faces turn rather than the
+cube move is given the framing of `--rotation` and the mouse, and
+nothing else ever turns it. The moves keep arriving and keep being
+played: what is dropped is the orientation, never the cube.
 
 `--beat` and `--lead` are how fast the cube answers, and they are one
 subject rather than two. A move is **over by the time the window hears

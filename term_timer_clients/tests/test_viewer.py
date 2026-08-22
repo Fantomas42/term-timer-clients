@@ -1879,6 +1879,17 @@ class MainTestCase(unittest.TestCase):
         self.assertFalse(host.msaa)
         self.assertFalse(host.offscreen)
 
+    def test_build_host_deaf_to_the_gyroscope(self) -> None:
+        """A window asked to ignore the gyroscope holds no tracker."""
+        options = entry.build_parser({}).parse_args(
+            ['-e', ENDPOINT, '-g'],
+        )
+
+        host = entry.build_host(options)
+
+        self.assertIsNone(host.view.tracker)
+        self.assertIsNone(host.viewer.orientation)
+
     def test_configuration_carries_the_defaults(self) -> None:
         """What term-timer was configured with is what the client opens on."""
         options = entry.build_parser(CONFIG).parse_args([])

@@ -279,6 +279,19 @@ Three layers, and the boundaries between them are the point:
   cannot read, which would open the very window the option was meant to
   change and say nothing about it, so `parse_camera_rotation()` refuses
   one against `ROTATION_PATTERN` instead.
+- **`--no-gyroscope`** — a cube deaf to what turns it, and the option
+  is *the absence of a tracker* rather than a topic dropped as it
+  arrives: `build_host()` hands `None` to `Viewer` and to `CubeCast`
+  alike, which is the very state a client that never orients itself is
+  already in — `turn_cube()` has nothing to feed a quaternion to, and
+  the window is framed by `--rotation` and the mouse alone. Filtering
+  it on the wire is what cannot be done and what is not wanted:
+  ZeroMQ subscribes by prefix, so dropping one topic of the `cube.`
+  plane would mean naming every other one, and a gyroscope that stops
+  arriving is a cube that stops saying it is there — `dispatch()`
+  reads `connected` off the cube talking at all. What it drops is the
+  orientation and never the cube: the moves keep arriving and keep
+  being played.
 - **`--beat` / `--lead`** — how fast the cube answers, and the one
   place two options are a single subject. `--beat` is how long a
   quarter turn is given to turn, `--lead` how much of a move is
