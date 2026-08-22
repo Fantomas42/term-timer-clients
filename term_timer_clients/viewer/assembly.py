@@ -22,10 +22,33 @@ from cubing_algs.display.gl.transforms import Vec3
 BLAST_REACH = 3.0
 
 # Seconds a cube takes to implode around its core, and to explode away
-# from it. The blast is the shorter of the two: a cube gathers itself
-# and a cube is torn apart, and the two are not the same gesture.
-IMPLOSION_DURATION = 1.4
-EXPLOSION_DURATION = 0.9
+# from it. Both are held short enough to be read as an answer rather
+# than as an opening: a cube connecting is news, and news the window
+# takes about a second to finish telling has stopped answering the
+# hand that pressed the button.
+#
+# The same length, and that is not the two gestures made one: what
+# tells them apart is the ease, which they travel in opposite
+# directions - a gathering leaves briskly and rushes its landing,
+# where a blast is torn off at once and coasts. A gathering was long
+# only for as long as its curve started at a standstill; the floor
+# below took that away, and the length it was given to hide it went
+# with it. They are kept two constants all the same: the blast times
+# the core going out as well as the pieces, and a single number would
+# be two decisions wearing one name.
+IMPLOSION_DURATION = 0.7
+EXPLOSION_DURATION = 0.7
+
+# What a piece is already moving at when its travel begins, as a share
+# of the even pace it would keep if it had no ease at all. A cubic
+# alone leaves at nothing, which is what a blast wants and what a
+# gathering cannot afford: the same curve read backwards has the
+# pieces hang still for the first third of the way in, and a cube that
+# takes a third of its animation to be seen starting has answered
+# late whatever its total length. So the curve is given a floor to
+# leave on, small enough that the rush at the other end - the one the
+# blast is torn off by - is left where it was.
+BLAST_ONSET = 0.25
 
 # Share of the animation spent handing the shells their turn, the rest
 # being what a single piece takes to travel. It is what makes the
@@ -198,12 +221,25 @@ def blast(phase: float) -> float:
     """
     Ease a piece between its place and the far end of its ray.
 
-    One cubic, and it is read both ways: gathering, a piece hangs out
-    there and then rushes the last of the distance in, which is what a
-    core pulling on it looks like; letting go, it is torn off at once
-    and coasts the rest of the way out, which is what a blast looks
-    like. The same curve travelled in the other direction, so a link
-    that flickers reverses without a piece ever jumping.
+    One cubic laid over an even pace, and it is read both ways:
+    gathering, a piece leaves at once and then rushes the last of the
+    distance in, which is what a core pulling on it looks like;
+    letting go, it is torn off at once and coasts the rest of the way
+    out, which is what a blast looks like. **One curve and never two**,
+    travelled in the other direction rather than swapped for its
+    mirror, so a link that flickers reverses without a piece ever
+    jumping. It is also the whole of what tells the two gestures
+    apart, they being given the very same length: the direction a
+    curve is read in is a shape and not a speed, and a piece rushing
+    home never looks like a piece being thrown.
+
+    ``BLAST_ONSET`` is the floor it leaves on, and it is there for the
+    gathering alone: a bare cubic starts at a standstill, so read
+    forwards it spends the opening of the effect saying nothing at all
+    while the piece it is meant to be pulling hangs where it was. The
+    floor is small, and it is spent where the curve is flattest: the
+    steep end - the one the blast is torn off by, and the one that
+    lands a gathering piece home - keeps the pace it had.
 
     It never goes past one on either end: an overshoot would take a
     piece inside its own place, and inside a cube every place is
@@ -216,7 +252,7 @@ def blast(phase: float) -> float:
         How much of the distance it has covered.
 
     """
-    return phase * phase * phase
+    return phase * (BLAST_ONSET + (1.0 - BLAST_ONSET) * phase * phase)
 
 
 def breath(elapsed: float) -> float:
