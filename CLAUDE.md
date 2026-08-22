@@ -71,6 +71,35 @@ Three layers, and the boundaries between them are the point:
   `interrupted` or `crashed` leaves the very same window behind,
   because a stream that is over publishes no state and no move
   whatever carried it away.
+- **`viewer/clock.py`** — `CubeClock`, where the clock of the cube
+  stands next to the clock of the client, and the whole of what makes
+  `cube-cast` answer a hand rather than trail it. **A move is over by
+  the time it is heard of**: the cube reports a face once it has
+  stopped turning, the report crosses a bluetooth link and a stream,
+  and the hand is elsewhere when the window finally hears about it. So
+  a move is handed to `Viewer.push()` with the **age** it has already
+  reached, and the animation starts the turn where it would already
+  stand instead of at zero. A cube stamps on a counter of its own,
+  sharing no origin with anything here, but two clocks with no common
+  origin still tell the same *durations*: the offset is read as the
+  smallest delay ever observed between a stamp and its arrival, and
+  what a later arrival exceeds it by is the delay that move alone
+  suffered. **What is measured is therefore the jitter and never the
+  latency** — the minimum absorbs whatever the link costs every single
+  time, and no reading from this side can tell a constant delay from a
+  difference of origins, which is why the constant is `lead`, a setting
+  argued with on the command line rather than a measurement. What the
+  measurement buys is the cadence of the fingers in place of the
+  cadence of the radio: a stack batching two moves into one packet
+  hands them over at the very same instant, and the stamps the cube
+  wrote are what puts them back where they happened. A delay is only
+  ever known against a **younger** move, so the head of the very first
+  burst is handed over younger than it is — it lasts one burst, and it
+  errs on the side of the cube being behind rather than ahead. The
+  reading belongs to the connection it was taken in and goes with it,
+  in `restart()` as in `unlink()`: a counter runs whether or not
+  anybody listens, and the cube coming back may not even be the one
+  that left.
 - **`viewer/assembly.py`** — the pieces of the cube imploding around
   the ball core, and exploding away from it when the link drops.
   Pure: a scene comes in, a scene comes out, its pieces moved, and it
@@ -250,6 +279,35 @@ Three layers, and the boundaries between them are the point:
   cannot read, which would open the very window the option was meant to
   change and say nothing about it, so `parse_camera_rotation()` refuses
   one against `ROTATION_PATTERN` instead.
+- **`--beat` / `--lead`** — how fast the cube answers, and the one
+  place two options are a single subject. `--beat` is how long a
+  quarter turn is given to turn, `--lead` how much of a move is
+  reckoned already over when the window hears of it. Measured on the
+  `cadence.py` harness of cubing-algs against a simulated 80 ms link,
+  the delay from the gesture to the cube landing is
+  **`latency + beat − lead`**, which says two things at once: that
+  every millisecond of visible turn is a millisecond of retard, so the
+  only real choice is how much of the turn one wants to look at; and
+  that a lead is not a knob of its own. **Compensating alone changes
+  nothing at all** — 0.33 s either way at 8 TPS — because an age only
+  reaches the schedule while the beat is shorter than the gap between
+  two moves: above it the queue saturates, `start = max(date, end)`
+  pins each move behind the one before it, and the dates are never
+  read. Hence the defaults, 100 ms and 50 ms against the 280 ms of
+  cubing-algs, which is a beat written for an algorithm one reads
+  rather than for a hand one follows: 0.16 s of measured lag against
+  0.33 s, and a beat that stays under the gap of a hand up to ten
+  turns a second. The ceiling on the age is read on the beat for the
+  same reason — an age reaching the whole of a turn starts it where it
+  ends, and the face lands without ever being seen to move — and it
+  has to sit **above** the lead rather than on it: what it bounds is
+  the delay measured on top of the lead, so a ceiling equal to the
+  lead clamps every measurement away and leaves the reading of the
+  clock doing nothing at all. Three quarters of the beat is what keeps
+  a visible quarter of the turn in the worst case while leaving the
+  jitter room to be worth measuring. A lead **typed** is honored
+  whatever it says, asking for a cube that snaps being a thing one may
+  want.
 - **`--transparent`** — a cube laid on the desktop, and the one place
   the host reaches around `GlfwHost` rather than under it. The three
   glfw hints it needs are posted *before* `super().open()` runs: hints

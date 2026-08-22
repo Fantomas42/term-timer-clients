@@ -50,6 +50,8 @@ from term_timer_clients.viewer.assembly import waiting_core
 from term_timer_clients.viewer.client import WINDOW_OFFLINE
 from term_timer_clients.viewer.client import WINDOW_TITLE
 from term_timer_clients.viewer.client import CubeCast
+from term_timer_clients.viewer.clock import MOVE_LEAD
+from term_timer_clients.viewer.clock import CubeClock
 from term_timer_clients.viewer.host import TRANSPARENT
 from term_timer_clients.viewer.host import CubeCastHost
 
@@ -276,13 +278,13 @@ class CubeMoveTestCase(ClientTestCase):
         """A move reaches the viewer the moment it is heard."""
         self.view.dispatch(envelope('cube.move', {'move': "R'"}))
 
-        self.viewer.push.assert_called_once_with("R'")
+        self.viewer.push.assert_called_once_with("R'", age=MOVE_LEAD)
 
     def test_history_is_pushed_too(self) -> None:
         """A move caught up on is played like any other."""
         self.view.dispatch(envelope('cube.history', {'move': 'U2'}))
 
-        self.viewer.push.assert_called_once_with('U2')
+        self.viewer.push.assert_called_once_with('U2', age=MOVE_LEAD)
 
     def test_move_is_read_in_the_display_frame(self) -> None:
         """A move is turned the way the cube is looked at."""
@@ -290,7 +292,7 @@ class CubeMoveTestCase(ClientTestCase):
 
         view.dispatch(envelope('cube.move', {'move': 'L'}))
 
-        self.viewer.push.assert_called_once_with('R')
+        self.viewer.push.assert_called_once_with('R', age=MOVE_LEAD)
 
     def test_empty_move_is_ignored(self) -> None:
         """A message carrying no move plays nothing."""
@@ -305,7 +307,160 @@ class CubeMoveTestCase(ClientTestCase):
 
         view.dispatch(envelope('cube.move', {'move': '[R,'}))
 
-        self.viewer.push.assert_called_once_with('[R,')
+        self.viewer.push.assert_called_once_with('[R,', age=MOVE_LEAD)
+
+
+class CubeClockTestCase(unittest.TestCase):
+    """Where the clock of the cube is read to stand."""
+
+    def test_a_cube_stamping_nothing_gets_the_lead(self) -> None:
+        """A move nothing dates is as old as every move is."""
+        clock = CubeClock(lead=0.05)
+
+        self.assertEqual(clock.age(None, 10.0), 0.05)
+
+    def test_the_first_move_is_as_old_as_the_lead(self) -> None:
+        """One arrival says nothing of a delay, having nothing to beat."""
+        clock = CubeClock(lead=0.05)
+
+        self.assertAlmostEqual(clock.age(1000.0, 10.0), 0.05)
+
+    def test_a_move_held_up_is_aged_by_what_it_lost(self) -> None:
+        """What an arrival exceeds the quickest one by is its own delay."""
+        clock = CubeClock(lead=0.05)
+
+        clock.age(1000.0, 10.0)
+
+        self.assertAlmostEqual(clock.age(1100.0, 10.13), 0.08)
+
+    def test_the_quickest_arrival_is_the_reference(self) -> None:
+        """A packet beating them all takes the offset down with it."""
+        clock = CubeClock(lead=0.05)
+
+        clock.age(1000.0, 10.2)
+
+        self.assertAlmostEqual(clock.age(1100.0, 10.1), 0.05)
+        self.assertAlmostEqual(clock.age(1200.0, 10.4), 0.25)
+
+    def test_a_burst_is_dated_by_the_cube_and_not_by_the_packet(self) -> None:
+        """
+        Two moves handed over at once are put back where they happened.
+
+        This is the whole of what reading the clock of the cube buys: a
+        bluetooth stack batching a pair gives them one arrival, and the
+        older of the two has to be played as the older of the two - a
+        hundred and twenty milliseconds apart here, which is the gap the
+        fingers made and not the one the radio reports.
+        """
+        clock = CubeClock(lead=0.0)
+
+        clock.age(1000.0, 10.0)
+        clock.age(1120.0, 10.0)
+
+        first = clock.age(2000.0, 11.0)
+        second = clock.age(2120.0, 11.0)
+
+        self.assertAlmostEqual(first - second, 0.12)
+        self.assertAlmostEqual(second, 0.0)
+
+    def test_the_first_burst_is_what_settles_the_offset(self) -> None:
+        """
+        A move is only known to be old once a younger one has been seen.
+
+        The offset is the quickest arrival there has been, so the head
+        of the very first burst is read before anything has yet shown
+        how quick the link can be, and is handed over younger than it
+        is. It is inherent to measuring a delay against a minimum, it
+        lasts one burst, and it errs on the side of the cube being
+        behind rather than ahead.
+        """
+        clock = CubeClock(lead=0.0)
+
+        first = clock.age(1000.0, 10.0)
+        second = clock.age(1120.0, 10.0)
+
+        self.assertAlmostEqual(first, 0.0)
+        self.assertAlmostEqual(second, 0.0)
+
+    def test_the_ceiling_keeps_a_turn_to_look_at(self) -> None:
+        """An age is never allowed to eat the whole of a turn."""
+        clock = CubeClock(lead=0.05, ceiling=0.06)
+
+        clock.age(1000.0, 10.0)
+
+        self.assertAlmostEqual(clock.age(2000.0, 11.5), 0.06)
+
+    def test_no_ceiling_holds_nothing_back(self) -> None:
+        """A clock told of no limit reports the age it measured."""
+        clock = CubeClock(lead=0.0, ceiling=0.0)
+
+        clock.age(1000.0, 10.0)
+
+        self.assertAlmostEqual(clock.age(1100.0, 10.5), 0.4)
+
+    def test_a_lucky_packet_is_forgotten_in_the_end(self) -> None:
+        """The window is what keeps one arrival from holding the offset."""
+        clock = CubeClock(lead=0.0, span=2)
+
+        clock.age(1000.0, 10.0)
+        clock.age(1100.0, 10.2)
+        clock.age(1200.0, 10.3)
+
+        self.assertAlmostEqual(clock.age(1300.0, 10.4), 0.0)
+
+    def test_a_clock_reset_forgets_the_cube_it_was_reading(self) -> None:
+        """What was measured belongs to the connection it was measured in."""
+        clock = CubeClock(lead=0.0)
+
+        clock.age(1000.0, 10.0)
+        clock.reset()
+
+        self.assertAlmostEqual(clock.age(9000.0, 20.0), 0.0)
+
+
+class CubeMoveAgeTestCase(ClientTestCase):
+    """How old a move is by the time the viewer is handed it."""
+
+    def test_a_move_is_pushed_as_old_as_it_is(self) -> None:
+        """The age the clock reads is the age the viewer plays from."""
+        view = CubeCast(self.viewer, self.tracker, clock=CubeClock(lead=0.02))
+
+        view.dispatch(envelope('cube.move', {'move': 'R'}))
+
+        self.viewer.push.assert_called_once_with('R', age=0.02)
+
+    def test_an_unreadable_stamp_is_dropped_rather_than_guessed(self) -> None:
+        """A cube stamping nonsense is one nothing can be read from."""
+        view = CubeCast(self.viewer, self.tracker, clock=CubeClock(lead=0.02))
+
+        view.dispatch(
+            envelope('cube.move', {'move': 'R', 'cube_timestamp': 'soon'}),
+        )
+        view.dispatch(
+            envelope('cube.move', {'move': 'U', 'cube_timestamp': True}),
+        )
+
+        for call in self.viewer.push.call_args_list:
+            self.assertEqual(call.kwargs['age'], 0.02)
+
+    def test_a_new_session_starts_the_clock_over(self) -> None:
+        """A publisher that restarted may not even be the same cube."""
+        self.view.dispatch(envelope('cube.move', {'move': 'R'}))
+        self.view.clock.age(1000.0, 10.0)
+
+        self.view.dispatch(
+            envelope('cube.move', {'move': 'U'}, session_id='b7e2'),
+        )
+
+        self.assertEqual(len(self.view.clock.delays), 0)
+
+    def test_a_link_that_drops_starts_the_clock_over(self) -> None:
+        """The counter of a cube runs whether or not anybody listens."""
+        self.view.clock.age(1000.0, 10.0)
+
+        self.view.dispatch(envelope('cube.link', {'connected': False}))
+
+        self.assertEqual(len(self.view.clock.delays), 0)
 
 
 class CubeSensorTestCase(ClientTestCase):
@@ -1579,6 +1734,64 @@ class CubeCastHostAliasedTestCase(unittest.TestCase):
         offscreen.create.assert_not_called()
         self.assertIsNone(host.target)
         self.assertFalse(host.offscreen)
+
+
+class CadenceTestCase(unittest.TestCase):
+    """What the command line settles of how fast the cube answers."""
+
+    def test_parse_beat(self) -> None:
+        """A beat is typed in the milliseconds a hand is talked about in."""
+        self.assertAlmostEqual(entry.parse_beat('100'), 0.1)
+
+    def test_beat_rejects_what_no_turn_happens_in(self) -> None:
+        """A turn given no time at all is one nothing could play."""
+        for value in ('0', '-40', '0.5', 'quick', ''):
+            with self.subTest(value=value), self.assertRaises(SystemExit):
+                entry.build_parser({}).parse_args(['-e', ENDPOINT, '-b', value])
+
+    def test_parse_lead(self) -> None:
+        """A lead of nothing is a stream nothing travels through."""
+        self.assertAlmostEqual(entry.parse_lead('50'), 0.05)
+        self.assertAlmostEqual(entry.parse_lead('0'), 0.0)
+
+    def test_lead_rejects_what_is_not_a_duration(self) -> None:
+        """An argument naming no delay stops the client."""
+        for value in ('-10', 'late', '1.5', ''):
+            with self.subTest(value=value), self.assertRaises(SystemExit):
+                entry.build_parser({}).parse_args(['-e', ENDPOINT, '-l', value])
+
+    def test_build_host_cadences_the_cube(self) -> None:
+        """The beat reaches the animation, and the lead reaches the clock."""
+        options = entry.build_parser({}).parse_args(
+            ['-e', ENDPOINT, '-b', '80', '-l', '30'],
+        )
+
+        host = entry.build_host(options)
+
+        self.assertAlmostEqual(host.viewer.duration, 0.08)
+        self.assertAlmostEqual(host.view.clock.lead, 0.03)
+
+    def test_build_host_keeps_a_turn_to_look_at(self) -> None:
+        """
+        A measured delay may never eat the whole of the beat.
+
+        What was typed is another matter: a lead of its own is an answer
+        about this link, and asking for a cube that snaps is a thing one
+        may want.
+        """
+        options = entry.build_parser({}).parse_args(
+            ['-e', ENDPOINT, '-b', '100', '-l', '10'],
+        )
+        wide = entry.build_parser({}).parse_args(
+            ['-e', ENDPOINT, '-b', '100', '-l', '90'],
+        )
+
+        self.assertAlmostEqual(
+            entry.build_host(options).view.clock.ceiling, 0.075,
+        )
+        self.assertAlmostEqual(
+            entry.build_host(wide).view.clock.ceiling, 0.09,
+        )
 
 
 class MainTestCase(unittest.TestCase):

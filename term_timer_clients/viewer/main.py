@@ -26,6 +26,7 @@ from term_timer_clients.protocol import CUBE_PREFIX
 from term_timer_clients.protocol import SESSION_END_TOPIC
 from term_timer_clients.protocol import EventStream
 from term_timer_clients.viewer.client import CubeCast
+from term_timer_clients.viewer.clock import CubeClock
 from term_timer_clients.viewer.host import CubeCastHost
 
 logger = logging.getLogger(__name__)
@@ -46,6 +47,43 @@ PALETTE_SETTING = 'palette'
 # A step of the solve is what a window is opened on, never a taste kept
 # between sessions, so nothing configures it
 DEFAULT_MODE = ''
+
+# How long a quarter turn takes on screen, and how much of it is
+# already over when the window hears about it, in milliseconds.
+#
+# **What the beat adds to the lag is exactly what it gives to see**:
+# measured on the cadence harness of cubing-algs against a simulated
+# bluetooth link, the delay from the gesture to the cube landing is
+# `latency + beat - lead`, so every millisecond of visible turn is a
+# millisecond of retard and there is no third term to trade against.
+# A hundred and fifty is where a cube stops feeling like it is being
+# dragged, against the four hundred of the cubing-algs beat, which is
+# written for an algorithm one reads rather than for a hand one follows.
+#
+# The two are **not independent**: a lead only ever takes effect while
+# the beat is shorter than the gap between two moves, a longer one
+# saturating the queue and pinning every move behind the one before it.
+# A hundred holds up to ten turns a second, which is above what a hand
+# sustains between two pauses.
+DEFAULT_BEAT = 100
+
+DEFAULT_LEAD = 50
+
+# The share of a turn an age may eat into, past which a move would land
+# without ever being seen to move. It has to sit **above** the lead and
+# not on it: what it bounds is the delay measured on top of the lead - a
+# packet held back, a burst handed over in one go - and a ceiling equal
+# to the lead would clamp every measurement away and leave the reading
+# of the clock doing nothing at all. Three quarters keeps a visible
+# quarter of the turn in the worst case while leaving the jitter room
+# to be worth measuring.
+#
+# A lead typed on the command line is honored whatever it says, this
+# holding back only what is added to it: asking for a cube that snaps
+# is a thing one may want, and it is asked for with `--lead`.
+LEAD_SHARE = 0.75
+
+MILLISECONDS = 1000.0
 
 # The framing of cubing-algs. What is given here is also what the
 # camera goes back to on Space: the viewer reframes on the rotation it
@@ -93,6 +131,62 @@ def configured_choice(
         return ''
 
     return value
+
+
+def read_milliseconds(value: str, floor: int) -> float:
+    """
+    Read a duration typed in milliseconds, in the seconds of a clock.
+
+    Args:
+        value: The argument, as it was typed.
+        floor: The smallest it is allowed to be, in milliseconds.
+
+    Returns:
+        The duration, in seconds.
+
+    Raises:
+        ArgumentTypeError: When the argument names no such duration.
+
+    """
+    if not value.isdigit() or int(value) < floor:
+        msg = (
+            f'"{ value }" is not a duration, '
+            f'expected milliseconds from { floor }'
+        )
+        raise ArgumentTypeError(msg)
+
+    return int(value) / MILLISECONDS
+
+
+def parse_beat(value: str) -> float:
+    """
+    Read how long a quarter turn is given to happen.
+
+    Args:
+        value: The argument, as it was typed.
+
+    Returns:
+        The beat, in seconds.
+
+    """
+    return read_milliseconds(value, 1)
+
+
+def parse_lead(value: str) -> float:
+    """
+    Read how much of a move is over by the time it is heard of.
+
+    Zero is a perfectly good answer, and it is the one for a stream
+    nothing travels through: it plays every turn whole.
+
+    Args:
+        value: The argument, as it was typed.
+
+    Returns:
+        The lead, in seconds.
+
+    """
+    return read_milliseconds(value, 0)
 
 
 def parse_camera_rotation(value: str) -> str:
@@ -239,6 +333,28 @@ def build_parser(config: Config) -> ArgumentParser:
         ),
     )
     parser.add_argument(
+        '-b', '--beat',
+        type=parse_beat,
+        default=DEFAULT_BEAT / MILLISECONDS,
+        metavar='MILLISECONDS',
+        help=(
+            'Set how long a quarter turn takes to turn on screen.\n'
+            'What it adds to the delay is what it gives to see.\n'
+            f'Default: { DEFAULT_BEAT }.'
+        ),
+    )
+    parser.add_argument(
+        '-l', '--lead',
+        type=parse_lead,
+        default=DEFAULT_LEAD / MILLISECONDS,
+        metavar='MILLISECONDS',
+        help=(
+            'Set how much of a move is already over when the\n'
+            'window hears of it, and starts the turn that far in.\n'
+            f'Default: { DEFAULT_LEAD }.'
+        ),
+    )
+    parser.add_argument(
         '-t', '--transparent',
         action='store_true',
         help=(
@@ -285,9 +401,20 @@ def build_host(options: Namespace) -> CubeCastHost:
         rotation=options.rotation,
         window_size=options.window_size,
         orientation=tracker,
+        duration=options.beat,
     )
 
-    view = CubeCast(viewer, tracker, options.orientation)
+    # The ceiling is read on the beat because that is what it protects:
+    # an age reaching the whole of a turn starts it where it ends. What
+    # was typed is never held back by it - a lead of its own is an
+    # answer about this link, and this only ever bounds what the jitter
+    # of the link adds on top of it.
+    clock = CubeClock(
+        lead=options.lead,
+        ceiling=max(options.lead, options.beat * LEAD_SHARE),
+    )
+
+    view = CubeCast(viewer, tracker, options.orientation, clock)
 
     return CubeCastHost(
         viewer=viewer,

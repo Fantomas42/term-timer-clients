@@ -89,6 +89,9 @@ SOURCE = 'solve'
 
 HARDWARE_NAME = 'GANi3'
 
+# A cube counts its own milliseconds, a script counts in seconds.
+MILLISECONDS = 1000.0
+
 BATTERY_LEVEL = 80
 
 # The state the cube introduces itself in: a solved one, as a cube
@@ -532,7 +535,17 @@ def rehearse(
         time.sleep(pauses.gathering)
 
         for move in moves:
-            publisher.send(MOVE_TOPIC, {'move': str(move)})
+            # Stamped on a clock of its own, as a cube stamps: it is
+            # what a client reads to tell how old a move already is by
+            # the time it hears of it, and a phantom publishing none
+            # would rehearse everything but the delay a real one has.
+            publisher.send(
+                MOVE_TOPIC,
+                {
+                    'move': str(move),
+                    'cube_timestamp': time.monotonic() * MILLISECONDS,
+                },
+            )
             time.sleep(pauses.pace)
 
         print(f'Watching for { pauses.watching }s')

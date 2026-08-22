@@ -82,7 +82,8 @@ underneath is kept, and it is the one the next connection starts from.
 
 ```
 Usage: cube-cast [-h] [-e ENDPOINT] [-o ORIENTATION] [-p PALETTE] [-m MODE]
-                 [-r ROTATION] [-w WIDTHxHEIGHT] [-t] [--no-msaa]
+                 [-r ROTATION] [-w WIDTHxHEIGHT] [-b MILLISECONDS]
+                 [-l MILLISECONDS] [-t] [--no-msaa]
 
 Watch a cube in 3D, from the term-timer event stream.
 
@@ -107,6 +108,14 @@ Options:
   -w WIDTHxHEIGHT, --window-size WIDTHxHEIGHT
                         Set the size of the window.
                         Default: 400x300.
+  -b MILLISECONDS, --beat MILLISECONDS
+                        Set how long a quarter turn takes to turn on screen.
+                        What it adds to the delay is what it gives to see.
+                        Default: 100.
+  -l MILLISECONDS, --lead MILLISECONDS
+                        Set how much of a move is already over when the
+                        window hears of it, and starts the turn that far in.
+                        Default: 50.
   -t, --transparent     Lay the cube on the desktop: no background, no window
                         decoration, and floating above everything.
                         Default: False.
@@ -129,6 +138,27 @@ R face, `y0x0` looks the cube straight in the F face. It frames the
 cube rather than turning it — the cube is turned by the hardware
 alone — and `Space` comes back to it, so a window opened on an angle
 stays on it.
+
+`--beat` and `--lead` are how fast the cube answers, and they are one
+subject rather than two. A move is **over by the time the window hears
+of it**: the cube reports a face once it has stopped turning, and the
+report crosses a bluetooth link and a stream before arriving. `--beat`
+is how long a quarter turn is then given to turn, and `--lead` how much
+of it is reckoned already done, the animation starting the turn that
+far in instead of at zero.
+
+Measured against a simulated 80 ms link, the delay from the gesture to
+the cube landing is `latency + beat - lead`. Two things follow. Every
+millisecond of visible turn is a millisecond of retard, so the only
+real choice is how much of the turn you want to look at. And a lead
+alone changes nothing: it only reaches the animation while the beat is
+shorter than the gap between two moves, a longer one queueing each move
+behind the one before it. Hence the defaults, 100 and 50, which measure
+0.16 s of lag where the cubing-algs beat of 280 ms measures 0.33 s.
+
+Lower both for a cube that snaps to the hand, raise the beat for a turn
+you can follow, and `--lead 0` plays every move whole — the honest
+setting for a stream nothing travels through.
 
 The window turns nothing itself. The cubing-algs viewer reads the
 letters of the notation as moves, and this one holds them back: the

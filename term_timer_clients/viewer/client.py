@@ -1,5 +1,6 @@
 """Translation of the event stream into what the viewer shows."""
 import logging
+import time
 from typing import TYPE_CHECKING
 from typing import Any
 
@@ -14,6 +15,7 @@ from cubing_algs.vcube import VCube
 from term_timer_clients.protocol import CUBE_PREFIX
 from term_timer_clients.protocol import PROTOCOL_VERSION
 from term_timer_clients.protocol import SESSION_END_TOPIC
+from term_timer_clients.viewer.clock import CubeClock
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -40,9 +42,12 @@ class CubeCast:
 
     The whole client is here, and none of it touches a socket or a
     window: an envelope comes in, and a cube is reposed, a move is
-    queued or a quaternion is fed to the tracker. The viewer plays the
-    moves at the cadence of their arrival, so a move is pushed the very
-    moment it is heard and never held back for the next frame.
+    queued or a quaternion is fed to the tracker. A move is pushed the
+    very moment it is heard and never held back for the next frame, and
+    it is pushed with the **age** it has already reached: a face is
+    over by the time the window hears of it, so the turn is started
+    where it would already stand rather than from zero. ``CubeClock``
+    is what reads that age.
 
     The envelope is read before its payload: a session identifier that
     changes means term-timer restarted, and everything told before
@@ -54,6 +59,7 @@ class CubeCast:
             viewer: Viewer,
             tracker: OrientationTracker | None = None,
             orientation: str = '',
+            clock: CubeClock | None = None,
     ) -> None:
         """
         Bind a viewer to the stream that will feed it.
@@ -64,11 +70,15 @@ class CubeCast:
                 oriented by the cube itself.
             orientation: The two faces the cube is shown by, empty for
                 the frame the hardware reports in.
+            clock: What tells how old an arriving move already is. A
+                plain one when nothing says otherwise, the command line
+                being what argues with its lead.
 
         """
         self.viewer = viewer
         self.tracker = tracker
         self.orientation = orientation
+        self.clock = clock if clock is not None else CubeClock()
 
         # The rotations that bring the cube to the faces it is shown
         # by, and nothing at all when it is shown as it is held
@@ -164,6 +174,7 @@ class CubeCast:
         self.battery = ''
         self.connected = False
         self.described = False
+        self.clock.reset()
 
         if self.tracker is not None:
             self.tracker.reset()
@@ -255,7 +266,21 @@ class CubeCast:
 
     def play_move(self, data: dict[str, Any]) -> None:
         """
-        Queue the move the cube just reported.
+        Queue the move the cube just reported, as old as it truly is.
+
+        **A move is over by the time it is heard of.** The cube reports
+        a face once it has stopped turning, the report crosses a
+        bluetooth link and a stream, and the hand is somewhere else
+        entirely when the window finally hears about it. Playing it from
+        zero at that point puts the whole of the turn behind the fingers
+        rather than the part of it that is left, and that is the lag one
+        feels; handed its age instead, the animation starts the turn
+        where it would already stand and the cube lands with the hand.
+
+        The age is read on the clock of the cube and not on the arrival:
+        a bluetooth stack handing two moves over in one packet gives
+        them the very same arrival, and the stamps the cube wrote are
+        what puts them back where the fingers made them.
 
         Args:
             data: Payload of a ``cube.move`` or ``cube.history`` message.
@@ -265,7 +290,30 @@ class CubeCast:
         if not isinstance(move, str) or not move:
             return
 
-        self.viewer.push(self.translate(move))
+        self.viewer.push(self.translate(move), age=self.age(data))
+
+    def age(self, data: dict[str, Any]) -> float:
+        """
+        Tell how long ago the move a payload carries truly happened.
+
+        A cube that stamps nothing, or stamps something unreadable, is
+        one this client can say nothing of beyond the lead every move
+        gets: what is not understood is dropped rather than guessed at,
+        a client ignoring what it does not know.
+
+        Args:
+            data: Payload of a ``cube.move`` or ``cube.history`` message.
+
+        Returns:
+            The age of the move, in seconds.
+
+        """
+        stamp = data.get('cube_timestamp')
+
+        if not isinstance(stamp, int | float) or isinstance(stamp, bool):
+            stamp = None
+
+        return self.clock.age(stamp, time.monotonic())
 
     def translate(self, move: str) -> str:
         """
@@ -402,6 +450,12 @@ class CubeCast:
         that comes back describes itself again, so its pieces wait for
         that state rather than gathering on the colors of a link that
         is no longer up.
+
+        The reading of its clock goes the same way, and for the same
+        reason: the counter of a cube runs whether or not anybody
+        listens, and the cube coming back may not even be the one that
+        left.
         """
         self.connected = False
         self.described = False
+        self.clock.reset()
