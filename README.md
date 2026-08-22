@@ -182,7 +182,7 @@ what only looks at the cube:
 
 ```
   Drag             Orbit the cube
-  Ctrl drag        Carry the window across the screen
+  Ctrl Drag        Carry the window across the screen
   Wheel            Zoom in and out
   Space            Frame the cube again
   Tab              Open the cube up, and put it back together

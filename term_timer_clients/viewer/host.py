@@ -38,7 +38,7 @@ WINDOW_SHORTCUTS = """\
 VIEWER_SHORTCUTS = f"""\
 cube-cast
   Drag             Orbit the cube
-  Ctrl drag        Carry the window across the screen
+  Ctrl Drag        Carry the window across the screen
 { WINDOW_SHORTCUTS }"""
 
 # The background of a window whose compositor is asked to let the

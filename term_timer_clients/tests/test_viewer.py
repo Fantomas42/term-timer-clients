@@ -1566,7 +1566,7 @@ class CubeCastHostMouseTestCase(CubeCastHostWindowCase):
     def test_the_mouse_reads_the_same_in_both_modes(self) -> None:
         """One list of shortcuts, a mode changing nothing of the mouse."""
         self.assertEqual(self.host.shortcuts, self.opaque_host().shortcuts)
-        self.assertIn('Ctrl drag', self.host.shortcuts)
+        self.assertIn('Ctrl Drag', self.host.shortcuts)
         self.assertIn('Drag             Orbit', self.host.shortcuts)
 
     def test_control_takes_hold_of_the_window(self) -> None:
