@@ -101,11 +101,12 @@ every one of them.
 | `cube.facelets` | `facelets` (54 characters, URFDLB), `serial`, `state`, `clock`, `timestamp` |
 | `cube.move` | `move` (notation), `serial`, `face`, `direction`, `cube_timestamp`, `local_timestamp`, `clock`, `timestamp` |
 | `cube.history` | Same as `cube.move`: the moves a cube reports after the fact, to fill a gap |
+| `cube.solved` | `cube_timestamp` — the cube announcing it sees itself solved, on its own clock |
 | `cube.gyro` | `quaternion` `{w,x,y,z}`, `velocity` `{x,y,z}`, `clock`, `timestamp` |
 | `cube.hardware` | `hardware_name`, `hardware_version`, `software_version`, `gyroscope_enabled`, `gyroscope_ready`, `gyroscope_supported`, … |
 | `cube.battery` | `level`, `charging_state` |
 | `cube.config` | `gyroscope_enabled`, `gyroscope_ready`, `gyroscope_supported` |
-| `cube.reset` | `{}` |
+| `cube.reset` | `result` — what the cube answered to the reset it was asked for, raw: eight bits declared boolean on a GAN V2, thirty-two bits on a V3 |
 | `cube.link` | `connected` (bool), `reason` (`opened`, `closed`, `lost`) |
 
 A cube announces its departure and never its arrival, so `cube.link` is
@@ -114,6 +115,21 @@ announces its own link the same way, so that a client waiting for the
 cube to show up cannot tell a recording from hardware. Fields a given
 cube does not report are simply absent: a client reads what it needs
 and ignores the rest.
+
+`cube.reset` is the one topic that answers an order rather than
+reporting a fact, and the only order that changes the cube instead of
+questioning it: it declares the cube solved. Its `result` is published
+whatever it says, a refusal included — a client filtering on success
+would make silence the only trace of a refused reset, which is exactly
+what a lost message looks like. What a given value means is a matter
+for the cube that sent it, not for this document.
+
+`cube.solved` is the cube reporting a **state**, not the end of a
+solve. A GAN cube emits it whenever it returns to the solved state,
+scrambling and idle fiddling included — nine times in one session on a
+GAN i carry 2 — chained behind the move that got it there and stamped
+with the `cube_timestamp` of that very move. A client timing anything
+counts moves; this topic says where the cube believes it stands.
 
 Rotations are **not** in this plane: they are derived downstream of the
 drivers, and a client orienting a cube does it from the raw quaternion
