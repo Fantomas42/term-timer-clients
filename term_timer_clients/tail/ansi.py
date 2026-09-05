@@ -13,34 +13,51 @@ BOLD: Final = '\x1b[1m'
 # 256 colors rather than the sixteen basic ones: the palette a terminal
 # is themed with owns those, and a blue that a theme turned into its
 # own blue would say a field name where a value is meant. Only what is
-# said here is worn.
-FRAME: Final = '\x1b[38;5;240m'
+# said here is worn. Chosen for a debugging tool rather than for a
+# prose reading: every one of them has to survive being glanced at in
+# a stream that scrolls, which a muted tone does not.
+FRAME: Final = '\x1b[38;5;244m'
 
-TIME: Final = '\x1b[38;5;245m'
+ID: Final = '\x1b[38;5;118m'
 
-CUBE_PLANE: Final = '\x1b[38;5;44m'
+TIME: Final = '\x1b[38;5;39m'
 
-SESSION_PLANE: Final = '\x1b[38;5;176m'
+# The two gaps of the header are a cadence, not an instant, and read
+# as one only when they are not mistaken for the date next to them.
+# They are told apart from one another too: the second only ever
+# shows up next to the first, and the same color on both would read
+# as one gap said twice instead of two different measures
+DELTA: Final = '\x1b[38;5;84m'
 
-FIELD: Final = '\x1b[38;5;110m'
+TOPIC_DELTA: Final = '\x1b[38;5;178m'
 
-NUMBER: Final = '\x1b[38;5;180m'
+CUBE_PLANE: Final = '\x1b[38;5;51m'
 
-STRING: Final = '\x1b[38;5;252m'
+SESSION_PLANE: Final = '\x1b[38;5;201m'
 
-TRUE: Final = '\x1b[38;5;78m'
+FIELD: Final = '\x1b[38;5;111m'
 
-FALSE: Final = '\x1b[38;5;174m'
+# What tells one cube from another, worn like a move: a value looked
+# for on its own rather than read as a number among the others
+SERIAL: Final = '\x1b[38;5;135m'
+
+NUMBER: Final = '\x1b[38;5;214m'
+
+STRING: Final = '\x1b[38;5;255m'
+
+TRUE: Final = '\x1b[38;5;46m'
+
+FALSE: Final = '\x1b[38;5;196m'
 
 NOTHING: Final = '\x1b[38;5;240m'
 
-BREAK: Final = '\x1b[38;5;179m'
+BREAK: Final = '\x1b[38;5;208m'
 
-ALERT: Final = '\x1b[38;5;203m'
+ALERT: Final = '\x1b[38;5;198m'
 
 # What the eye looks for in a stream that scrolls: the state a session
 # is in, and the move a cube reports
-HIGHLIGHT: Final = '\x1b[38;5;255m'
+HIGHLIGHT: Final = '\x1b[38;5;226m'
 
 # The variable every tool that paints reads, whatever it paints with
 COLOR_VARIABLE: Final = 'NO_COLOR'

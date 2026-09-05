@@ -67,6 +67,10 @@ FACELETS_FIELDS: Final = frozenset({'facelets'})
 
 HIGHLIGHT_FIELDS: Final = frozenset({'move'})
 
+# What tells one cube from another, in a payload otherwise counted in
+# numbers: read as an identity rather than as a quantity
+SERIAL_FIELDS: Final = frozenset({'serial'})
+
 # The nine states a solve goes through. Read off the value rather than
 # off the field name: a "state" is also what a cube describes itself
 # with, and what a trainer calls a card
@@ -243,6 +247,9 @@ def scalar_codes(key: str, value: object) -> tuple[str, ...]:
         return (ansi.TRUE,) if value else (ansi.FALSE,)
 
     if isinstance(value, int | float):
+        if key in SERIAL_FIELDS:
+            return (ansi.SERIAL, ansi.BOLD)
+
         return (ansi.NUMBER,)
 
     return text_codes(key, value)
@@ -443,30 +450,32 @@ class Renderer:
         topic = str(envelope.get('topic', ''))
         stamp = envelope.get('ts')
 
-        parts = [
+        parts = []
+
+        sequence = envelope.get('seq')
+        if isinstance(sequence, int):
+            parts.append(self.paint(f'#{ sequence }', ansi.ID, ansi.BOLD))
+
+        parts.extend((
+            self.paint(topic, self.plane_codes(topic), ansi.BOLD),
             self.paint(
                 format_time(stamp)
                 if isinstance(stamp, int | float)
                 else '--:--:--.---',
                 ansi.TIME,
             ),
-            self.paint(topic, self.plane_codes(topic), ansi.BOLD),
-        ]
+        ))
 
         if gap >= 0:
-            parts.append(self.paint(f'+{ format_gap(gap) }', ansi.TIME))
+            parts.append(self.paint(f'+{ format_gap(gap) }', ansi.DELTA))
 
         if topic_gap >= 0 and topic_gap != gap:
             parts.append(
                 self.paint(
                     f'Δ{ topic } { format_gap(topic_gap) }',
-                    ansi.TIME,
+                    ansi.TOPIC_DELTA,
                 ),
             )
-
-        sequence = envelope.get('seq')
-        if isinstance(sequence, int):
-            parts.append(self.paint(f'#{ sequence }', ansi.FRAME))
 
         opening = self.paint(BLOCK_OPEN, ansi.FRAME)
 
