@@ -3,6 +3,7 @@ import logging
 from collections.abc import Callable
 from typing import Any
 from typing import Final
+from typing import NamedTuple
 
 from term_timer_clients.protocol import PROTOCOL_VERSION
 from term_timer_clients.protocol import SESSION_END_TOPIC
@@ -23,6 +24,41 @@ QUIET_TOPICS: Final = frozenset({'cube.gyro'})
 # What a gap of nothing looks like: no message came before, so there is
 # no time between them to show
 NO_GAP: Final = -1.0
+
+
+class TopicFilter(NamedTuple):
+    """
+    What --topic and --exclude narrow the stream down to.
+
+    Bundled rather than two arguments of their own: a reader is built
+    on one filter, not on the two flags a command line happens to
+    spell it with.
+    """
+
+    topics: tuple[str, ...] = ()
+    excluded: tuple[str, ...] = ()
+
+    def shows(self, topic: str) -> bool:
+        """
+        Say whether this filter lets a topic through.
+
+        Args:
+            topic: The topic of the message.
+
+        Returns:
+            True when neither side of the filter holds it back.
+
+        """
+        if self.topics and not topic.startswith(self.topics):
+            return False
+
+        return not topic.startswith(self.excluded)
+
+
+# Nothing narrowed: every topic is shown, --all aside. A constant
+# rather than the call itself as the default of __init__, which ruff
+# reads as a mutable default even for a tuple that cannot mutate
+NO_FILTER: Final = TopicFilter()
 
 
 class StreamTail:
@@ -51,6 +87,7 @@ class StreamTail:
             recorder: Recorder | None = None,
             *,
             everything: bool = False,
+            topic_filter: TopicFilter = NO_FILTER,
     ) -> None:
         """
         Prepare a reader over a renderer and a place to write.
@@ -61,12 +98,15 @@ class StreamTail:
             recorder: What every envelope is handed to, none when
                 nothing is being kept.
             everything: Whether the topics held back are shown too.
+            topic_filter: What --topic and --exclude narrowed the
+                stream down to, nothing narrowed when default.
 
         """
         self.renderer = renderer
         self.writer = writer
         self.recorder = recorder
         self.everything = everything
+        self.topic_filter = topic_filter
 
         self.session_id = ''
         self.sequence = -1
@@ -92,6 +132,12 @@ class StreamTail:
         """
         Say whether a topic is printed at all.
 
+        Two filters stack, each narrowing what the one before let
+        through: the topic_filter of --topic and --exclude, and --all,
+        which is what the gyroscope alone answers to - a matter of
+        cadence rather than of meaning, so it stands whatever the
+        other one was asked.
+
         Args:
             topic: The topic of the message.
 
@@ -99,6 +145,9 @@ class StreamTail:
             True when the message is one to show.
 
         """
+        if not self.topic_filter.shows(topic):
+            return False
+
         return self.everything or topic not in QUIET_TOPICS
 
     def restart(self, envelope: Envelope) -> None:

@@ -27,6 +27,7 @@ from term_timer_clients.tail.ansi import Paint
 from term_timer_clients.tail.ansi import build_paint
 from term_timer_clients.tail.client import QUIET_TOPICS
 from term_timer_clients.tail.client import StreamTail
+from term_timer_clients.tail.client import TopicFilter
 from term_timer_clients.tail.render import MINIMUM_WIDTH
 from term_timer_clients.tail.render import Renderer
 from term_timer_clients.tail.render import format_date
@@ -561,6 +562,35 @@ class EnvelopeTestCase(BlockTestCase):
         self.assertEqual(renderer.width, MINIMUM_WIDTH)
 
 
+class TopicFilterTestCase(unittest.TestCase):
+    """What --topic and --exclude narrow the stream down to."""
+
+    def test_nothing_narrowed_shows_everything(self) -> None:
+        """A filter with neither side set holds nothing back."""
+        self.assertTrue(TopicFilter().shows('cube.move'))
+
+    def test_a_topic_is_kept_by_its_prefix(self) -> None:
+        """``cube.`` is what the whole plane is asked for by."""
+        whole_plane = TopicFilter(topics=('cube.',))
+
+        self.assertTrue(whole_plane.shows('cube.move'))
+        self.assertFalse(whole_plane.shows('session.state'))
+
+    def test_a_whole_topic_name_filters_as_well_as_a_plane(self) -> None:
+        """A topic is its own prefix, and asked for the same way."""
+        one_topic = TopicFilter(topics=('cube.move',))
+
+        self.assertTrue(one_topic.shows('cube.move'))
+        self.assertFalse(one_topic.shows('cube.facelets'))
+
+    def test_an_exclusion_is_a_prefix_too(self) -> None:
+        """--exclude drops what it names, the rest goes through."""
+        excluded = TopicFilter(excluded=('cube.gyro',))
+
+        self.assertFalse(excluded.shows('cube.gyro'))
+        self.assertTrue(excluded.shows('cube.move'))
+
+
 class StreamTailTestCase(unittest.TestCase):
     """What the client keeps of the stream while it reads it."""
 
@@ -764,6 +794,83 @@ class StreamTailTestCase(unittest.TestCase):
         self.assertEqual(self.written, [])
 
 
+class StreamTailFilterTestCase(unittest.TestCase):
+    """What --topic and --exclude narrow the reading down to."""
+
+    def setUp(self) -> None:
+        """Read into a list, colorless."""
+        self.written: list[str] = []
+
+    @property
+    def text(self) -> str:
+        """
+        Everything the client wrote, as one piece.
+
+        Returns:
+            The blocks, joined the way a terminal shows them.
+
+        """
+        return '\n'.join(self.written)
+
+    def test_a_topic_filter_narrows_what_is_shown(self) -> None:
+        """--topic keeps only what a reader asked to see."""
+        tail = StreamTail(
+            Renderer(Paint(enabled=False), width=WIDTH),
+            self.written.append,
+            everything=True,
+            topic_filter=TopicFilter(topics=('session.',)),
+        )
+
+        tail.dispatch(message('cube.move', {'move': 'R'}, 0))
+        tail.dispatch(message('session.state', {'state': 'solving'}, 1))
+
+        self.assertNotIn('cube.move', self.text)
+        self.assertIn('session.state', self.text)
+
+    def test_an_exclusion_holds_a_topic_back(self) -> None:
+        """--exclude drops a topic on top of what --all already shows."""
+        tail = StreamTail(
+            Renderer(Paint(enabled=False), width=WIDTH),
+            self.written.append,
+            everything=True,
+            topic_filter=TopicFilter(excluded=('cube.facelets',)),
+        )
+
+        tail.dispatch(message('cube.move', {'move': 'R'}, 0))
+        tail.dispatch(message('cube.facelets', {'facelets': 'U'}, 1))
+
+        self.assertIn('cube.move', self.text)
+        self.assertNotIn('cube.facelets', self.text)
+
+    def test_the_gyroscope_stays_held_back_under_a_filter(self) -> None:
+        """--topic narrows what --all shows, it does not stand for it."""
+        tail = StreamTail(
+            Renderer(Paint(enabled=False), width=WIDTH),
+            self.written.append,
+            topic_filter=TopicFilter(topics=(GYRO,)),
+        )
+
+        tail.dispatch(message(GYRO, {'quaternion': {'w': 1.0}}, 0))
+
+        self.assertNotIn(GYRO, self.text)
+
+    def test_a_loss_hidden_by_a_topic_filter_is_reported(self) -> None:
+        """A message held back by --topic was published all the same."""
+        tail = StreamTail(
+            Renderer(Paint(enabled=False), width=WIDTH),
+            self.written.append,
+            everything=True,
+            topic_filter=TopicFilter(topics=('cube.move',)),
+        )
+
+        tail.dispatch(message('cube.move', {'move': 'R'}, 0))
+        tail.dispatch(message('cube.facelets', {'facelets': 'U'}, 5))
+        tail.dispatch(message('cube.move', {'move': 'U'}, 6))
+
+        self.assertIn('4 messages lost', self.text)
+        self.assertNotIn('cube.facelets', self.text)
+
+
 class CaptureTestCase(unittest.TestCase):
     """Real captures, read the way a reader would see them."""
 
@@ -872,6 +979,50 @@ class MainTestCase(unittest.TestCase):
 
         self.assertTrue(options.everything)
         self.assertTrue(options.colorless)
+
+    def test_the_filters_default_to_nothing_narrowed(self) -> None:
+        """Nothing is asked for that was not asked for."""
+        options = entry.build_parser(CONFIG).parse_args([])
+
+        self.assertEqual(options.topics, [])
+        self.assertEqual(options.excluded, [])
+
+    def test_a_topic_is_repeatable(self) -> None:
+        """Several prefixes are asked for one flag at a time."""
+        options = entry.build_parser(CONFIG).parse_args(
+            ['--topic', 'cube.move', '--topic', 'session.'],
+        )
+
+        self.assertEqual(options.topics, ['cube.move', 'session.'])
+
+    def test_an_exclusion_is_repeatable(self) -> None:
+        """--exclude takes as many prefixes as --topic does."""
+        options = entry.build_parser(CONFIG).parse_args(
+            ['--exclude', 'cube.gyro', '--exclude', 'cube.battery'],
+        )
+
+        self.assertEqual(options.excluded, ['cube.gyro', 'cube.battery'])
+
+    def test_topic_and_exclude_refuse_each_other(self) -> None:
+        """Two ways of narrowing the same stream are one too many."""
+        with self.assertRaises(SystemExit):
+            entry.build_parser(CONFIG).parse_args(
+                ['--topic', 'cube.', '--exclude', 'cube.gyro'],
+            )
+
+    def test_the_tail_is_assembled_with_its_filter(self) -> None:
+        """What is typed on the command line is what the reader gets."""
+        options = entry.build_parser(CONFIG).parse_args(
+            ['--topic', 'cube.move', '--topic', 'session.'],
+        )
+
+        with patch.dict(os.environ, {}, clear=True):
+            tail = entry.build_tail(options, io.StringIO())
+
+        self.assertEqual(
+            tail.topic_filter,
+            TopicFilter(('cube.move', 'session.')),
+        )
 
     def test_a_block_is_written_whole_and_flushed(self) -> None:
         """A tail left to its own buffering says nothing for pages."""

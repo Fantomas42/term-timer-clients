@@ -20,6 +20,7 @@ from term_timer_clients.protocol import EventStream
 from term_timer_clients.tail.ansi import build_paint
 from term_timer_clients.tail.client import Recorder
 from term_timer_clients.tail.client import StreamTail
+from term_timer_clients.tail.client import TopicFilter
 from term_timer_clients.tail.client import Writer
 from term_timer_clients.tail.render import Renderer
 
@@ -79,6 +80,33 @@ def build_parser(config: Config) -> ArgumentParser:
             'Default: False.'
         ),
     )
+
+    filters = parser.add_mutually_exclusive_group()
+    filters.add_argument(
+        '-t', '--topic',
+        dest='topics',
+        action='append',
+        default=[],
+        metavar='PREFIX',
+        help=(
+            'Show only topics starting with this, cube.move or\n'
+            'cube. for the whole plane. Repeatable.\n'
+            'Default: every topic shown.'
+        ),
+    )
+    filters.add_argument(
+        '--exclude',
+        dest='excluded',
+        action='append',
+        default=[],
+        metavar='PREFIX',
+        help=(
+            'Hide topics starting with this, on top of the\n'
+            'gyroscope held back by default. Repeatable.\n'
+            'Default: nothing excluded.'
+        ),
+    )
+
     parser.add_argument(
         '-r', '--record',
         type=parse_record_file,
@@ -176,6 +204,9 @@ def build_tail(
         build_writer(stream),
         recorder,
         everything=options.everything,
+        topic_filter=TopicFilter(
+            tuple(options.topics), tuple(options.excluded),
+        ),
     )
 
 
