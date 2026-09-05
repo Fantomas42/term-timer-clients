@@ -514,6 +514,8 @@ def rehearse(
         pauses: What is waited at each moment of the cycle.
 
     """
+    serial = 1
+
     while True:
         cube = VCube()
         cube.rotate(setup)
@@ -529,12 +531,19 @@ def rehearse(
 
         publisher.send(HARDWARE_TOPIC, {'hardware_name': HARDWARE_NAME})
         publisher.send(BATTERY_TOPIC, {'level': BATTERY_LEVEL})
-        publisher.send(FACELETS_TOPIC, {'facelets': cube.state})
+        publisher.send(
+            FACELETS_TOPIC,
+            {
+                'facelets': cube.state,
+                'serial': serial,
+            },
+        )
 
         print(f'Gathering for { pauses.gathering }s')
         time.sleep(pauses.gathering)
 
         for move in moves:
+            serial += 1
             # Stamped on a clock of its own, as a cube stamps: it is
             # what a client reads to tell how old a move already is by
             # the time it hears of it, and a phantom publishing none
@@ -543,6 +552,7 @@ def rehearse(
                 MOVE_TOPIC,
                 {
                     'move': str(move),
+                    'serial': serial,
                     'cube_timestamp': time.monotonic() * MILLISECONDS,
                 },
             )
