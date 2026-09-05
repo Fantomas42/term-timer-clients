@@ -103,9 +103,9 @@ every one of them.
 | `cube.history` | Same as `cube.move`: the moves a cube reports after the fact, to fill a gap |
 | `cube.solved` | `cube_timestamp` — the cube announcing it sees itself solved, on its own clock |
 | `cube.gyro` | `quaternion` `{w,x,y,z}`, `velocity` `{x,y,z}`, `clock`, `timestamp` |
-| `cube.hardware` | `hardware_name`, `hardware_version`, `software_version`, `gyroscope_enabled`, `gyroscope_ready`, `gyroscope_supported`, … |
+| `cube.hardware` | `hardware_name`, `hardware_version`, `software_version`, `gyroscope_enabled`, `gyroscope_ready`, … |
 | `cube.battery` | `level`, `charging_state` |
-| `cube.config` | `gyroscope_enabled`, `gyroscope_ready`, `gyroscope_supported` |
+| `cube.config` | `gyroscope_enabled`, `gyroscope_ready` |
 | `cube.reset` | `result` — what the cube answered to the reset it was asked for, raw: eight bits declared boolean on a GAN V2, thirty-two bits on a V3 |
 | `cube.link` | `connected` (bool), `reason` (`opened`, `closed`, `lost`) |
 
