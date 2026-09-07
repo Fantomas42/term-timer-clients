@@ -268,23 +268,25 @@ Three layers, and the boundaries between them are the point:
   to bring the two back together, so `on_viewer_key()` claims every key
   the window does not answer itself. `VIEWER_SHORTCUTS` is the list
   that says so, written when the window opens through the `shortcuts`
-  field of `GlfwHost`. `BACKGROUND` is the ground the cube is drawn on,
-  written on the stage the moment the window opens and never again — a
-  ground that moves is a thing the eye is drawn to, and nothing here has
-  anything to say by moving it. cubing-algs clears with a mid grey,
-  which is the neutral a look is *judged* against rather than a taste,
-  and this window is one nobody judges anything in: it is left open next
-  to a terminal for the length of a session. It is **never darker than
-  the ball core standing on it** — a cube nobody is connected to leaves
-  the graphite core alone in the window, and a ground taken down to
-  `DORMANT_CORE` would swallow the one thing left to show. What the
-  darker ground costs is the silhouette of the cube, and it is paid in
-  `main.py`: `CUBE_LOOK` gives the rim back what the darkness took
-  (`CUBE_RIM_STRENGTH`) and changes nothing else, the color of a sticker
-  being no business of the ground's. Only a transparency actually
-  *granted* takes it away: it is written before the attribute is read
-  back, so a compositor that refused one leaves an ordinary window with
-  an ordinary ground.
+  field of `GlfwHost`. **Nothing here paints the ground**, and that is
+  the whole of the subject: the window is cleared with the cold slate
+  `VIEWER_BACKGROUND` of cubing-algs, and a client setting a ground of
+  its own would be one window disagreeing with every other one the
+  library opens. It was a constant here for exactly one commit, and the
+  measurement that moved it into the library is worth keeping: a rim
+  raised to give the silhouette back what a dark ground takes came out
+  **invisible**, the rim being `pow(1 - dot(normal, view), rim_power)`
+  and so reaching the chamfers of the outline alone, where the stickers
+  face the camera and take none of it. What draws a cube against a dark
+  ground is the outer stickers, so the look is left exactly as
+  cubing-algs ships it — `Viewer` is handed no `look=` at all. What this
+  client still owes the arrangement is a single assertion,
+  `DormantGroundTestCase`: the ground belongs to the library and the
+  graphite of `DORMANT_CORE` belongs here, so this is the only side that
+  can notice the day a window is cleared darker than the one thing a
+  waiting client is left showing. Only a transparency actually *granted*
+  takes the ground away, and the library default is what a refused one
+  falls back on.
 - **`--rotation`** — where the camera stands when the window opens,
   the framing string of cubing-algs and **not** a cube rotation:
   `--orientation` translates the moves, this one only moves the eye,

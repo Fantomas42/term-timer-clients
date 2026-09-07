@@ -22,6 +22,7 @@ from cubing_algs.display.gl import OrientationTracker
 from cubing_algs.display.gl import Viewer
 from cubing_algs.display.gl.constants import CORE_COLOR
 from cubing_algs.display.gl.constants import DEFAULT_LOOK
+from cubing_algs.display.gl.constants import VIEWER_BACKGROUND
 from cubing_algs.display.gl.context import GLContextError
 from cubing_algs.display.gl.host import GlfwHost
 from cubing_algs.display.gl.scene import CubieInstance
@@ -55,7 +56,6 @@ from term_timer_clients.viewer.client import CubeCast
 from term_timer_clients.viewer.client import orientation_basis
 from term_timer_clients.viewer.clock import MOVE_LEAD
 from term_timer_clients.viewer.clock import CubeClock
-from term_timer_clients.viewer.host import BACKGROUND
 from term_timer_clients.viewer.host import TRANSPARENT
 from term_timer_clients.viewer.host import CubeCastHost
 
@@ -920,6 +920,25 @@ class AssemblyTestCase(unittest.TestCase):
         self.assertIs(drawn, scene)
 
 
+class DormantGroundTestCase(unittest.TestCase):
+    """What the ground of cubing-algs owes a core left on its own."""
+
+    def test_the_ground_stays_above_the_dormant_core(self) -> None:
+        """
+        Test that the window is never cleared darker than the ball.
+
+        The ground belongs to cubing-algs and the graphite belongs
+        here: this client is the one dimming the core while nothing
+        drives the cube, so it is the one that has to notice the day
+        the window is cleared with something darker than the only
+        thing it is left showing.
+        """
+        for channel, dormant in zip(
+                VIEWER_BACKGROUND[:3], DORMANT_CORE, strict=True,
+        ):
+            self.assertGreater(channel, dormant)
+
+
 class CoreTintTestCase(unittest.TestCase):
     """The ball core, painted for the cube standing around it."""
 
@@ -1568,10 +1587,11 @@ class CubeCastHostTransparentTestCase(CubeCastHostWindowCase):
         self.assertEqual(self.viewer.look.samples, Look().samples)
 
     def test_refused_transparency_is_named(self) -> None:
-        """A window refused the desktop is an opaque one in every way."""
+        """A compositor saying no leaves the cube on the viewer grey."""
         glfw = MagicMock()
         glfw.get_window_attrib.return_value = 0
         stage = MagicMock()
+        stage.background = 'untouched'
 
         with (
             patch.dict(sys.modules, {'glfw': glfw}),
@@ -1581,23 +1601,7 @@ class CubeCastHostTransparentTestCase(CubeCastHostWindowCase):
         ):
             self.host.open()
 
-        self.assertEqual(stage.background, BACKGROUND)
-
-    def test_an_ordinary_window_is_cleared_with_the_ground(self) -> None:
-        """The mid grey of cubing-algs is the one thing not kept here."""
-        stage = MagicMock()
-
-        with patch.object(GlfwHost, 'open', return_value=stage):
-            self.opaque_host().open()
-
-        self.assertEqual(stage.background, BACKGROUND)
-
-    def test_the_ground_stays_above_the_dormant_core(self) -> None:
-        """A ground taken down to the ball would swallow it."""
-        for channel, dormant in zip(
-                BACKGROUND[:3], DORMANT_CORE, strict=True,
-        ):
-            self.assertGreater(channel, dormant)
+        self.assertEqual(stage.background, 'untouched')
 
     def test_a_missing_glfw_is_left_to_the_parent(self) -> None:
         """The extra to install is named by cubing-algs, not here."""
