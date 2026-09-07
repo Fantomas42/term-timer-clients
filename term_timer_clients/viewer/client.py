@@ -449,7 +449,10 @@ class CubeCast:
         A state belongs to the connection it was published in: a cube
         that comes back describes itself again, so its pieces wait for
         that state rather than gathering on the colors of a link that
-        is no longer up.
+        is no longer up. What it said of its name and its charge goes
+        the same way, and for the same reason: the title is what a
+        cube called itself over a link that is no longer up, and a
+        cube coming back may not even be the one that left.
 
         The reading of its clock goes the same way, and for the same
         reason: the counter of a cube runs whether or not anybody
@@ -458,4 +461,6 @@ class CubeCast:
         """
         self.connected = False
         self.described = False
+        self.hardware = ''
+        self.battery = ''
         self.clock.reset()

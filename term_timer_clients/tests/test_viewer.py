@@ -524,6 +524,19 @@ class CubeSensorTestCase(ClientTestCase):
 
         self.assertEqual(self.view.title, WINDOW_TITLE)
 
+    def test_title_drops_what_a_gone_cube_said_of_itself(self) -> None:
+        """A cube gone takes its name and its charge with it."""
+        self.view.dispatch(
+            envelope('cube.hardware', {'hardware_name': 'GANi3'}),
+        )
+        self.view.dispatch(envelope('cube.battery', {'level': 80}))
+
+        self.view.dispatch(
+            envelope('cube.link', {'connected': False, 'reason': 'lost'}),
+        )
+
+        self.assertEqual(self.view.title, f'{ WINDOW_TITLE } · offline')
+
     def test_nameless_hardware_is_ignored(self) -> None:
         """What says nothing about the cube leaves the title alone."""
         self.view.dispatch(envelope('cube.hardware', {'hardware_name': ''}))
