@@ -268,7 +268,23 @@ Three layers, and the boundaries between them are the point:
   to bring the two back together, so `on_viewer_key()` claims every key
   the window does not answer itself. `VIEWER_SHORTCUTS` is the list
   that says so, written when the window opens through the `shortcuts`
-  field of `GlfwHost`.
+  field of `GlfwHost`. `BACKGROUND` is the ground the cube is drawn on,
+  written on the stage the moment the window opens and never again — a
+  ground that moves is a thing the eye is drawn to, and nothing here has
+  anything to say by moving it. cubing-algs clears with a mid grey,
+  which is the neutral a look is *judged* against rather than a taste,
+  and this window is one nobody judges anything in: it is left open next
+  to a terminal for the length of a session. It is **never darker than
+  the ball core standing on it** — a cube nobody is connected to leaves
+  the graphite core alone in the window, and a ground taken down to
+  `DORMANT_CORE` would swallow the one thing left to show. What the
+  darker ground costs is the silhouette of the cube, and it is paid in
+  `main.py`: `CUBE_LOOK` gives the rim back what the darkness took
+  (`CUBE_RIM_STRENGTH`) and changes nothing else, the color of a sticker
+  being no business of the ground's. Only a transparency actually
+  *granted* takes it away: it is written before the attribute is read
+  back, so a compositor that refused one leaves an ordinary window with
+  an ordinary ground.
 - **`--rotation`** — where the camera stands when the window opens,
   the framing string of cubing-algs and **not** a cube rotation:
   `--orientation` translates the moves, this one only moves the eye,
