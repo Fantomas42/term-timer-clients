@@ -41,28 +41,13 @@ cube-cast
   Ctrl Drag        Carry the window across the screen
 { WINDOW_SHORTCUTS }"""
 
-# The ground the cube is drawn on. cubing-algs clears its window with a
-# mid grey, and that grey is the neutral a look is *judged* against
-# rather than a taste: it is what a sticker and a rim light are read on
-# while they are being decided, and this window is one nobody decides
-# anything in - it is left open next to a terminal for the length of a
-# session. A cold slate instead, leaning the way the cube leans.
-#
-# Dark, and **never darker than the ball core standing on it**: a cube
-# nobody is connected to leaves the graphite core alone in the window,
-# and a ground taken down to it would swallow the one thing left to
-# show. Half again the value of ``DORMANT_CORE`` is what keeps the ball
-# reading as a silhouette.
-BACKGROUND = (0.12, 0.13, 0.15, 1.0)
-
 # The background of a window whose compositor is asked to let the
-# desktop through, against the ground the window is cleared with
-# otherwise.
+# desktop through, against the opaque ground the viewer clears with.
 TRANSPARENT = (0.0, 0.0, 0.0, 0.0)
 
 TRANSPARENCY_REFUSED = (
     'The compositor refused a transparent window: '
-    'the cube is drawn on the background of the viewer'
+    'the cube is drawn on the ground of the viewer'
 )
 
 
@@ -169,10 +154,7 @@ class CubeCastHost(GlfwHost):
         # glfw asks for, and an ``import glfw`` here would replace that
         # with a bare ModuleNotFoundError.
         if not self.transparent or not has_glfw():
-            stage = self.open_window()
-            stage.background = BACKGROUND
-
-            return stage
+            return self.open_window()
 
         import glfw  # noqa: PLC0415
 
@@ -184,10 +166,9 @@ class CubeCastHost(GlfwHost):
         glfw.window_hint(glfw.FLOATING, glfw.TRUE)
 
         stage = self.open_window()
-        stage.background = BACKGROUND
 
         # A compositor is free to refuse, and the stage keeps the ground
-        # of the window when it does: a background cleared to nothing on
+        # of the viewer when it does: a background cleared to nothing on
         # an opaque window shows whatever the driver left there.
         granted = glfw.get_window_attrib(
             self.window, glfw.TRANSPARENT_FRAMEBUFFER,

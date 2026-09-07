@@ -80,12 +80,10 @@ around the core the moment a cube connects and says what it looks like,
 and they are blasted away from it again when the link drops — the state
 underneath is kept, and it is the one the next connection starts from.
 
-The window is cleared with a cold slate rather than with the mid grey
-of cubing-algs: that grey is the neutral a look is judged against, and
-this window is one nobody judges anything in — it is left open next to
-a terminal for the length of a session. It stays lighter than the ball
-core all the same, a ground taken down to it having nothing left to
-show of a cube nobody is connected to.
+The window is cleared with the cold slate of cubing-algs, and the cube
+is lit exactly as the library lights it: nothing here paints a ground
+or touches a light, so this window looks like every other window the
+library opens.
 
 ```
 Usage: cube-cast [-h] [-e ENDPOINT] [-o ORIENTATION] [-p PALETTE] [-m MODE]
