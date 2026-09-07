@@ -132,8 +132,11 @@ with the `cube_timestamp` of that very move. A client timing anything
 counts moves; this topic says where the cube believes it stands.
 
 Rotations are **not** in this plane: they are derived downstream of the
-drivers, and a client orienting a cube does it from the raw quaternion
-of `cube.gyro`. Applying both would turn the cube twice.
+drivers, and a client orienting a cube does it from the quaternion of
+`cube.gyro` — already expressed by the driver in the canonical frame of
+the renderer (right-handed, `+X = R`, `+Y = U`, `+Z = F`), not in
+whatever frame the sensor itself reports. No client has a sensor-specific
+correction left to make. Applying both would turn the cube twice.
 
 ## `session.*` — what only term-timer knows
 

@@ -16,7 +16,6 @@ from unittest.mock import create_autospec
 from unittest.mock import patch
 
 from cubing_algs.constants import ORIENTATIONS
-from cubing_algs.display.gl import SENSOR_BASIS
 from cubing_algs.display.gl import Look
 from cubing_algs.display.gl import OrientationTracker
 from cubing_algs.display.gl import Viewer
@@ -167,7 +166,7 @@ class ClientTestCase(unittest.TestCase):
         """Wire a client on a viewer holding a solved 3x3x3."""
         self.viewer = create_autospec(Viewer, instance=True)
         self.viewer.cube = VCube()
-        self.tracker = OrientationTracker(basis=SENSOR_BASIS)
+        self.tracker = OrientationTracker()
         self.view = CubeCast(self.viewer, self.tracker)
 
 
@@ -1247,7 +1246,7 @@ class CaptureTestCase(unittest.TestCase):
             The viewer and the client driving it.
 
         """
-        tracker = OrientationTracker(basis=SENSOR_BASIS)
+        tracker = OrientationTracker(basis=orientation_basis(orientation))
         viewer = Viewer(cube=VCube(), orientation=tracker)
 
         return viewer, CubeCast(viewer, tracker, orientation)
@@ -1356,8 +1355,8 @@ class OrientationBasisTestCase(unittest.TestCase):
         """Under -o DF, a tracked rotation renders M * R * M-1, not R."""
         basis = orientation_basis('DF')
 
-        plain = OrientationTracker(basis=SENSOR_BASIS)
-        oriented = OrientationTracker(basis=basis * SENSOR_BASIS)
+        plain = OrientationTracker()
+        oriented = OrientationTracker(basis=basis)
 
         for w, x, y, z in (
                 (1.0, 0.0, 0.0, 0.0),
@@ -1375,17 +1374,17 @@ class OrientationBasisTestCase(unittest.TestCase):
         ):
             self.assertAlmostEqual(got, want)
 
-    def test_a_tracker_opened_without_orientation_keeps_the_sensor_basis(
+    def test_a_tracker_opened_without_orientation_applies_no_correction(
             self,
     ) -> None:
-        """A window opened plain reads the gyroscope as before this lot."""
+        """A window opened plain reads a gyroscope stream already canonical."""
         options = entry.build_parser({}).parse_args(['-e', ENDPOINT])
 
         host = entry.build_host(options)
 
         self.assertEqual(
             host.view.tracker.basis,  # type: ignore[union-attr]
-            SENSOR_BASIS,
+            Quat.identity(),
         )
 
 
@@ -1998,7 +1997,7 @@ class MainTestCase(unittest.TestCase):
         self.assertTrue(host.msaa)
         self.assertEqual(
             host.view.tracker.basis,  # type: ignore[union-attr]
-            orientation_basis('DF') * SENSOR_BASIS,
+            orientation_basis('DF'),
         )
 
     def test_build_host_without_antialiasing(self) -> None:

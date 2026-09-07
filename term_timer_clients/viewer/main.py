@@ -6,7 +6,6 @@ from argparse import Namespace
 from collections.abc import Collection
 
 from cubing_algs.constants import ORIENTATIONS
-from cubing_algs.display.gl import SENSOR_BASIS
 from cubing_algs.display.gl import OrientationTracker
 from cubing_algs.display.gl import Viewer
 from cubing_algs.display.image import ROTATION_PATTERN
@@ -405,17 +404,17 @@ def build_host(options: Namespace) -> CubeCastHost:
     # alone. The quaternions still arrive, and `turn_cube()` has
     # nothing to feed them to.
     #
-    # The basis composes two rotations, the sensor first: the hardware
-    # reports in its own frame regardless of `--orientation`, and the
-    # state and the moves are already turned by it (`rebuild()` and
-    # `translate()` in `client.py`) - a tracker left on `SENSOR_BASIS`
-    # alone would show a rotation correct in the frame of the hardware
-    # and wrong in the one of the screen.
+    # The gyroscope quaternion published on the stream is already
+    # canonical - the driver applies its own sensor basis before
+    # publishing, so the client has no hardware frame left to correct.
+    # Only the display orientation stays to compose, the same rotation
+    # already turning the state and the moves (`rebuild()` and
+    # `translate()` in `client.py`).
     tracker = (
         None
         if options.no_gyroscope
         else OrientationTracker(
-            basis=orientation_basis(options.orientation) * SENSOR_BASIS,
+            basis=orientation_basis(options.orientation),
         )
     )
 
