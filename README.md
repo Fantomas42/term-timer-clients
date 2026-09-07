@@ -80,6 +80,13 @@ around the core the moment a cube connects and says what it looks like,
 and they are blasted away from it again when the link drops — the state
 underneath is kept, and it is the one the next connection starts from.
 
+The window is cleared with a cold slate rather than with the mid grey
+of cubing-algs: that grey is the neutral a look is judged against, and
+this window is one nobody judges anything in — it is left open next to
+a terminal for the length of a session. It stays lighter than the ball
+core all the same, a ground taken down to it having nothing left to
+show of a cube nobody is connected to.
+
 ```
 Usage: cube-cast [-h] [-e ENDPOINT] [-o ORIENTATION] [-p PALETTE] [-m MODE]
                  [-r ROTATION] [-w WIDTHxHEIGHT] [-b MILLISECONDS]
@@ -204,7 +211,7 @@ that still has its bar, where it merely doubles it.
 decoration with it, and the window floats above everything else. It has
 nowhere left to show the title, and the hardware and the battery are
 written there — a compositor that refuses the transparency says so in a
-warning, and the window opens on the grey of the viewer.
+warning, and the window opens on the ground the cube is drawn on.
 
 A transparent window is refused the multisampling of an ordinary one,
 so the cube is antialiased aside and copied in. `--no-msaa` gives that

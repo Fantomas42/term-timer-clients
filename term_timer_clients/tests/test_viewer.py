@@ -52,6 +52,7 @@ from term_timer_clients.viewer.client import WINDOW_TITLE
 from term_timer_clients.viewer.client import CubeCast
 from term_timer_clients.viewer.clock import MOVE_LEAD
 from term_timer_clients.viewer.clock import CubeClock
+from term_timer_clients.viewer.host import BACKGROUND
 from term_timer_clients.viewer.host import TRANSPARENT
 from term_timer_clients.viewer.host import CubeCastHost
 
@@ -1470,11 +1471,10 @@ class CubeCastHostTransparentTestCase(CubeCastHostWindowCase):
         self.assertEqual(self.viewer.look.samples, Look().samples)
 
     def test_refused_transparency_is_named(self) -> None:
-        """A compositor saying no leaves the cube on the viewer grey."""
+        """A window refused the desktop is an opaque one in every way."""
         glfw = MagicMock()
         glfw.get_window_attrib.return_value = 0
         stage = MagicMock()
-        stage.background = 'untouched'
 
         with (
             patch.dict(sys.modules, {'glfw': glfw}),
@@ -1484,7 +1484,23 @@ class CubeCastHostTransparentTestCase(CubeCastHostWindowCase):
         ):
             self.host.open()
 
-        self.assertEqual(stage.background, 'untouched')
+        self.assertEqual(stage.background, BACKGROUND)
+
+    def test_an_ordinary_window_is_cleared_with_the_ground(self) -> None:
+        """The mid grey of cubing-algs is the one thing not kept here."""
+        stage = MagicMock()
+
+        with patch.object(GlfwHost, 'open', return_value=stage):
+            self.opaque_host().open()
+
+        self.assertEqual(stage.background, BACKGROUND)
+
+    def test_the_ground_stays_above_the_dormant_core(self) -> None:
+        """A ground taken down to the ball would swallow it."""
+        for channel, dormant in zip(
+                BACKGROUND[:3], DORMANT_CORE, strict=True,
+        ):
+            self.assertGreater(channel, dormant)
 
     def test_a_missing_glfw_is_left_to_the_parent(self) -> None:
         """The extra to install is named by cubing-algs, not here."""

@@ -4,11 +4,13 @@ import sys
 from argparse import ArgumentTypeError
 from argparse import Namespace
 from collections.abc import Collection
+from dataclasses import replace
 
 from cubing_algs.constants import ORIENTATIONS
 from cubing_algs.display.gl import SENSOR_BASIS
 from cubing_algs.display.gl import OrientationTracker
 from cubing_algs.display.gl import Viewer
+from cubing_algs.display.gl.constants import DEFAULT_LOOK
 from cubing_algs.display.image import ROTATION_PATTERN
 from cubing_algs.display.mode import MODE_CONFIGS
 from cubing_algs.display.palettes import PALETTES
@@ -47,6 +49,19 @@ PALETTE_SETTING = 'palette'
 # A step of the solve is what a window is opened on, never a taste kept
 # between sessions, so nothing configures it
 DEFAULT_MODE = ''
+
+# How the cube is lit here, and it is one knob away from the look
+# cubing-algs ships. That look was judged against the mid grey a
+# window is cleared with by default, and this one is cleared with a
+# ground of its own, darker: the rim light is what detaches a piece
+# from whatever is behind it, and the black plastic of a cube has
+# little left to be told from once the ground comes down towards it.
+# So the rim is given back what the darkness took, and nothing else
+# is - what a ground changes is the silhouette, not the color of a
+# sticker nor the way the light falls on it.
+CUBE_RIM_STRENGTH = 0.35
+
+CUBE_LOOK = replace(DEFAULT_LOOK, rim_strength=CUBE_RIM_STRENGTH)
 
 # How long a quarter turn takes on screen, and how much of it is
 # already over when the window hears about it, in milliseconds.
@@ -421,6 +436,7 @@ def build_host(options: Namespace) -> CubeCastHost:
         mode=options.mode,
         rotation=options.rotation,
         window_size=options.window_size,
+        look=CUBE_LOOK,
         orientation=tracker,
         duration=options.beat,
     )
