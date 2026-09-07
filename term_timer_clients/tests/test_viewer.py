@@ -15,6 +15,7 @@ from unittest.mock import MagicMock
 from unittest.mock import create_autospec
 from unittest.mock import patch
 
+from cubing_algs.constants import ORIENTATIONS
 from cubing_algs.display.gl import SENSOR_BASIS
 from cubing_algs.display.gl import Look
 from cubing_algs.display.gl import OrientationTracker
@@ -26,6 +27,7 @@ from cubing_algs.display.gl.host import GlfwHost
 from cubing_algs.display.gl.scene import CubieInstance
 from cubing_algs.display.gl.scene import Scene
 from cubing_algs.display.gl.transforms import ORIGIN
+from cubing_algs.display.gl.transforms import Quat
 from cubing_algs.display.gl.transforms import Vec3
 from cubing_algs.vcube import VCube
 
@@ -50,6 +52,7 @@ from term_timer_clients.viewer.assembly import waiting_core
 from term_timer_clients.viewer.client import WINDOW_OFFLINE
 from term_timer_clients.viewer.client import WINDOW_TITLE
 from term_timer_clients.viewer.client import CubeCast
+from term_timer_clients.viewer.client import orientation_basis
 from term_timer_clients.viewer.clock import MOVE_LEAD
 from term_timer_clients.viewer.clock import CubeClock
 from term_timer_clients.viewer.host import TRANSPARENT
@@ -1272,6 +1275,100 @@ class CaptureTestCase(unittest.TestCase):
         self.assertIsNotNone(view.tracker.reference)  # type: ignore[union-attr]
 
 
+# The six face normals of a solved cube, written out rather than read
+# off ``AXIS_X``/``AXIS_Y``/``AXIS_Z``: what this file has to prove is
+# the geometry an orientation composes, not that it agrees with
+# whichever constants happen to back it.
+FACE_NORMALS: dict[str, Vec3] = {
+    'U': Vec3(0.0, 1.0, 0.0),
+    'D': Vec3(0.0, -1.0, 0.0),
+    'R': Vec3(1.0, 0.0, 0.0),
+    'L': Vec3(-1.0, 0.0, 0.0),
+    'F': Vec3(0.0, 0.0, 1.0),
+    'B': Vec3(0.0, 0.0, -1.0),
+}
+
+
+def assert_vec3_close(
+        case: unittest.TestCase,
+        actual: Vec3,
+        expected: Vec3,
+) -> None:
+    """
+    Compare two vectors component by component, trig rounding allowed.
+
+    Args:
+        case: The test case the assertion is raised on.
+        actual: The vector as computed.
+        expected: The vector it is expected to be close to.
+
+    """
+    for got, want in zip(actual, expected, strict=True):
+        case.assertAlmostEqual(got, want)
+
+
+class OrientationBasisTestCase(unittest.TestCase):
+    """The rotation an ``-o`` orientation applies to the physical cube."""
+
+    def test_every_orientation_frames_its_named_faces(self) -> None:
+        """A name's top face lands on +Y, its front face on +Z."""
+        for name in ORIENTATIONS:
+            with self.subTest(orientation=name):
+                basis = orientation_basis(name)
+                top, front = name[0], name[1]
+
+                assert_vec3_close(
+                    self,
+                    basis.rotate(FACE_NORMALS[top]),
+                    Vec3(0.0, 1.0, 0.0),
+                )
+                assert_vec3_close(
+                    self,
+                    basis.rotate(FACE_NORMALS[front]),
+                    Vec3(0.0, 0.0, 1.0),
+                )
+
+    def test_empty_orientation_is_the_identity(self) -> None:
+        """A cube shown as it is held gets no rotation at all."""
+        self.assertEqual(orientation_basis(''), Quat.identity())
+
+    def test_the_display_orientation_conjugates_the_tracker(self) -> None:
+        """Under -o DF, a tracked rotation renders M * R * M-1, not R."""
+        basis = orientation_basis('DF')
+
+        plain = OrientationTracker(basis=SENSOR_BASIS)
+        oriented = OrientationTracker(basis=basis * SENSOR_BASIS)
+
+        for w, x, y, z in (
+                (1.0, 0.0, 0.0, 0.0),
+                (0.92388, 0.38268, 0.0, 0.0),
+        ):
+            plain.update(w, x, y, z)
+            oriented.update(w, x, y, z)
+
+        expected = (
+            basis * plain.orientation * basis.conjugate()
+        ).normalized()
+
+        for got, want in zip(
+                oriented.orientation, expected, strict=True,
+        ):
+            self.assertAlmostEqual(got, want)
+
+    def test_a_tracker_opened_without_orientation_keeps_the_sensor_basis(
+            self,
+    ) -> None:
+        """A window opened plain reads the gyroscope as before this lot."""
+        options = entry.build_parser({}).parse_args(['-e', ENDPOINT])
+
+        host = entry.build_host(options)
+
+        self.assertEqual(
+            host.view.tracker.basis,  # type: ignore[union-attr]
+            SENSOR_BASIS,
+        )
+
+
 class CubeCastHostTestCase(unittest.TestCase):
     """The window, and the title the stream writes in it."""
 
@@ -1879,6 +1976,10 @@ class MainTestCase(unittest.TestCase):
         self.assertIs(host.viewer.orientation, host.view.tracker)
         self.assertEqual(host.title, f'{ WINDOW_TITLE } · offline')
         self.assertTrue(host.msaa)
+        self.assertEqual(
+            host.view.tracker.basis,  # type: ignore[union-attr]
+            orientation_basis('DF') * SENSOR_BASIS,
+        )
 
     def test_build_host_without_antialiasing(self) -> None:
         """A cube asked for aliased is drawn into the window itself."""

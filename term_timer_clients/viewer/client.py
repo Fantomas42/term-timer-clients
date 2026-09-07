@@ -1,5 +1,6 @@
 """Translation of the event stream into what the viewer shows."""
 import logging
+import math
 import time
 from typing import TYPE_CHECKING
 from typing import Any
@@ -7,6 +8,11 @@ from typing import Any
 from cubing_algs.constants import ORIENTATION_FACE_MOVES
 from cubing_algs.display.gl import OrientationTracker
 from cubing_algs.display.gl import Viewer
+from cubing_algs.display.gl.transforms import AXIS_X
+from cubing_algs.display.gl.transforms import AXIS_Y
+from cubing_algs.display.gl.transforms import AXIS_Z
+from cubing_algs.display.gl.transforms import Quat
+from cubing_algs.display.gl.transforms import Vec3
 from cubing_algs.exceptions import CubingAlgsError
 from cubing_algs.parsing import parse_moves
 from cubing_algs.transform.translate import translate_moves
@@ -34,6 +40,51 @@ WINDOW_OFFLINE = 'offline'
 # published by term-timer about the cube, and says so even - and above
 # all - when the cube says nothing at all any more.
 LINK_TOPIC = 'cube.link'
+
+QUARTER_TURN = math.pi / 2
+
+# Axis and clockwise sign of the three whole-cube rotations, recopied
+# from ``MOVE_TURNS`` (cubing_algs/display/gl/animation.py): a move is
+# clockwise seen from its own face, so a quarter turn is -90 degrees in
+# right hand rule around its axis. Not exported by cubing_algs.display.gl,
+# so duplicated here rather than assumed - the geometry test of
+# ``orientation_basis()`` is what proves it instead.
+ROTATION_AXES: dict[str, tuple[Vec3, int]] = {
+    'x': (AXIS_X, -1),
+    'y': (AXIS_Y, -1),
+    'z': (AXIS_Z, -1),
+}
+
+
+def orientation_basis(orientation: str) -> Quat:
+    """
+    Build the rotation an orientation applies to the physical cube.
+
+    The state and the moves of a solve are already reoriented by
+    ``rebuild()`` and ``translate()`` below; a gyroscope quaternion is
+    not, and this is the rotation that is missing there: composed with
+    the sensor basis of a tracker, it turns the raw orientation of the
+    hardware into the one that agrees with what the screen shows.
+
+    Args:
+        orientation: The two faces the cube is shown by, empty for the
+            frame the hardware reports in.
+
+    Returns:
+        The identity for an empty orientation, or the composition of
+        the quarter and half turns ``ORIENTATION_FACE_MOVES`` names for
+        it, the first move applying first.
+
+    """
+    quat = Quat.identity()
+
+    moves = ORIENTATION_FACE_MOVES[orientation] if orientation else ''
+    for move in parse_moves(moves):
+        axis, sign = ROTATION_AXES[move.base_move]
+        angle = sign * move.quarter_turns * QUARTER_TURN
+        quat = Quat.from_axis_angle(axis, angle) * quat
+
+    return quat
 
 
 class CubeCast:

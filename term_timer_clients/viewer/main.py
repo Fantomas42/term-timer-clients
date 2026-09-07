@@ -26,6 +26,7 @@ from term_timer_clients.protocol import CUBE_PREFIX
 from term_timer_clients.protocol import SESSION_END_TOPIC
 from term_timer_clients.protocol import EventStream
 from term_timer_clients.viewer.client import CubeCast
+from term_timer_clients.viewer.client import orientation_basis
 from term_timer_clients.viewer.clock import CubeClock
 from term_timer_clients.viewer.host import CubeCastHost
 
@@ -403,10 +404,19 @@ def build_host(options: Namespace) -> CubeCastHost:
     # the viewer already draws a cube nobody orients from the camera
     # alone. The quaternions still arrive, and `turn_cube()` has
     # nothing to feed them to.
+    #
+    # The basis composes two rotations, the sensor first: the hardware
+    # reports in its own frame regardless of `--orientation`, and the
+    # state and the moves are already turned by it (`rebuild()` and
+    # `translate()` in `client.py`) - a tracker left on `SENSOR_BASIS`
+    # alone would show a rotation correct in the frame of the hardware
+    # and wrong in the one of the screen.
     tracker = (
         None
         if options.no_gyroscope
-        else OrientationTracker(basis=SENSOR_BASIS)
+        else OrientationTracker(
+            basis=orientation_basis(options.orientation) * SENSOR_BASIS,
+        )
     )
 
     # A mode is resolved once, on the solved cube the viewer is built
