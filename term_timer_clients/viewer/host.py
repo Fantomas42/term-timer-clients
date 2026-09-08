@@ -2,6 +2,11 @@
 from dataclasses import dataclass
 from dataclasses import field
 
+from cubing_algs.display.gl.constants import HELP_MOUSE
+from cubing_algs.display.gl.constants import HELP_WINDOW
+from cubing_algs.display.gl.constants import HelpEntry
+from cubing_algs.display.gl.constants import help_block
+from cubing_algs.display.gl.constants import viewer_entries
 from cubing_algs.display.gl.host import GlfwHost
 
 from term_timer_clients.viewer.assembly import Assembly
@@ -10,33 +15,23 @@ from term_timer_clients.viewer.framing import DEMO_VIEW
 from term_timer_clients.viewer.framing import USER_VIEW
 from term_timer_clients.viewer.framing import Framing
 
-# What is answered whatever the window is, the two mouse lines
-# included: the gestures themselves belong to cubing-algs, and what is
-# written here is only the half of its list this client leaves standing.
-# `ShortcutsTestCase` is what keeps the two from drifting apart.
-WINDOW_SHORTCUTS = """\
-  Wheel            Zoom in and out
-  Space            Frame the cube again
-  Tab              Open the cube up, and put it back together
-  F2               Show the X/Y/Z axes, red green blue
-  F3               Monitor the rendering performance
-  F4               Print a performance report
-  F5               Turn the vsync on and off
-  F12              Write a screenshot
-  Esc, Q           Close the window\
-"""
-
-# What the window answers, written when it opens. The list cubing-algs
-# ships names the keys turning the cube, and a cube turned elsewhere
-# has none of them: what is left is what only looks at it.
-VIEWER_SHORTCUTS = f"""\
-cube-cast
-  Drag             Orbit the cube
-  Ctrl Drag        Carry the window across the screen
-  1                Frame the cube the way an algorithm is read
-  2                Frame the cube the way the hand holding it sees it
-  3                Pass behind the cube, and come back
-{ WINDOW_SHORTCUTS }"""
+# What the window answers, written when it opens. The lines are asked
+# of cubing-algs rather than copied out of it: the gestures and the keys
+# belong to the window the library opens, and a list recopied here is a
+# list that says what that window answered the day it was written. What
+# this client owns of it is the three view keys and the name at the top
+# - and `moves=False`, which is what takes the keys turning a cube out
+# of the list as it takes them out of the window.
+VIEWER_SHORTCUTS = help_block(
+    'cube-cast',
+    (
+        *viewer_entries(HELP_MOUSE),
+        HelpEntry('1', 'Frame the cube the way an algorithm is read'),
+        HelpEntry('2', 'Frame the cube the way the hand holding it sees it'),
+        HelpEntry('3', 'Pass behind the cube, and come back'),
+        *viewer_entries(HELP_WINDOW),
+    ),
+)
 
 
 @dataclass
@@ -92,8 +87,16 @@ class CubeCastHost(GlfwHost):
     # cube the way cubing-algs frames it.
     framing: Framing = field(default_factory=Framing)
 
-    # Redeclared rather than passed in: the keys held back are held back
-    # by this class, so the list saying so belongs to it too.
+    # The stream is the only thing entitled to turn this cube: a face
+    # played from the keyboard - or a `Backspace` putting the cube back
+    # together - would drift the window away from the hardware with
+    # nothing to bring the two back together. The library refuses them
+    # at the door and takes them out of the list it prints; what is
+    # written below is that list with the three view keys added.
+    moves: bool = False
+
+    # Redeclared rather than passed in: the keys this window adds are
+    # added by this class, so the list saying so belongs to it too.
     shortcuts: str = VIEWER_SHORTCUTS
 
     # Where the pieces of the cube stand between the core and the far
@@ -161,28 +164,23 @@ class CubeCastHost(GlfwHost):
 
     def on_viewer_key(self, key: int) -> bool:
         """
-        Answer a key the viewer holds the state of, and swallow the rest.
+        Answer the three keys this window adds to the ones it inherits.
 
-        The cube drawn here is the one being turned somewhere else, and
-        the stream is the only thing entitled to move it: a face turned
-        from the keyboard would take the window away from the hardware
-        with nothing ever bringing the two back together. So every key
-        the host leaves unanswered is claimed here, which is what keeps
-        ``on_key()`` from reading it as a move, and backspace goes with
-        them - a cube put back together is a state the stream never
-        published either, and the drift it opens is the same one.
+        The framing is what they move, and they are answered here
+        rather than in the viewer because cubing-algs has no notion of
+        a view to stand in: it knows the rotation string a camera is
+        built from, and which of them is worth a key is a matter for
+        the window showing the cube.
 
-        What is left is what only looks at the cube: the framing, the
-        exploded view, the axes and the screenshot. The three view
-        keys are of that kind and are answered here rather than in the
-        viewer, cubing-algs having no notion of a view to stand in.
+        Everything else is the window of the library: the keys turning
+        a cube are refused by ``moves``, and what only looks at it -
+        the opening, the axes, the screenshot - is answered upstream.
 
         Args:
             key: The glfw code of the key.
 
         Returns:
-            Always True: what the window answers itself is settled
-            before this, and what is left is a move nobody plays.
+            True when the key was one of them, or one the host answers.
 
         """
         import glfw  # noqa: PLC0415
@@ -195,7 +193,7 @@ class CubeCastHost(GlfwHost):
         elif key == glfw.KEY_3:
             self.framing.flip()
             self.reframe()
-        elif key != glfw.KEY_BACKSPACE:
-            super().on_viewer_key(key)
+        else:
+            return super().on_viewer_key(key)
 
         return True

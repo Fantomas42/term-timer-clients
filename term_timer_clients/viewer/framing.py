@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from typing import Self
 
 from cubing_algs.display.constants import ROTATION
+from cubing_algs.display.rotation import fold_rotation
 from cubing_algs.display.rotation import turned_rotation
 
 # The three quarter view of cubing-algs: three faces at once and none
@@ -14,16 +15,26 @@ from cubing_algs.display.rotation import turned_rotation
 # this very view written out.
 DEMO_VIEW = 'demo'
 
+# The axis a framing writes its yaw on, as cubing-algs spells it.
+YAW_AXIS = 'y'
+
 # The cube as the hand holding it sees it: F straight ahead, U in
 # perspective above it, and nothing turned around the vertical. What
 # turns around it is the cube itself, under the gyroscope, so a yaw
 # here would be a permanent disagreement between the window and the
-# hands. The elevation is the one of the library framing, and it is
-# written out all the same: what this view names is a way of holding a
-# cube, about which a library changing its three quarter view has
-# nothing to say.
+# hands.
+#
+# The elevation is the one of the library framing, and it is **read off
+# it** rather than written down: what this view names is a way of
+# holding a cube, about which a library changing its three quarter view
+# has nothing to say - but the height that view is seen from is exactly
+# what a library does decide, and a number copied here would go on
+# saying `x-34` the day cubing-algs says something else. So the yaw is
+# taken out of the demo framing and what is left is the view.
 USER_VIEW = 'user'
-USER_ROTATION = 'x-34'
+USER_ROTATION = turned_rotation(
+    ROTATION, yaw=-fold_rotation(ROTATION)[YAW_AXIS],
+)
 
 # The views, and what a window opens on when nothing says otherwise.
 # Looking from behind is not one of them: it is something done to the

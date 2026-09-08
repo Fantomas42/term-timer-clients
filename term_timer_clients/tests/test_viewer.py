@@ -9,7 +9,6 @@ until a stage is attached to it - is enough. The captures of
 import math
 import sys
 import unittest
-from dataclasses import replace
 from itertools import pairwise
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -18,14 +17,17 @@ from unittest.mock import patch
 
 from cubing_algs.display.constants import ROTATION
 from cubing_algs.display.gl import Look
+from cubing_algs.display.gl import MoveClock
 from cubing_algs.display.gl import OrientationTracker
 from cubing_algs.display.gl import Viewer
 from cubing_algs.display.gl import orientation_basis
 from cubing_algs.display.gl.camera import parse_rotation
 from cubing_algs.display.gl.constants import CORE_COLOR
 from cubing_algs.display.gl.constants import DEFAULT_LOOK
+from cubing_algs.display.gl.constants import MOVE_LEAD
 from cubing_algs.display.gl.constants import VIEWER_BACKGROUND
 from cubing_algs.display.gl.constants import VIEWER_HELP
+from cubing_algs.display.gl.constants import viewer_help
 from cubing_algs.display.gl.context import GLContextError
 from cubing_algs.display.gl.scene import CubieInstance
 from cubing_algs.display.gl.scene import Scene
@@ -54,8 +56,6 @@ from term_timer_clients.viewer.assembly import waiting_core
 from term_timer_clients.viewer.client import WINDOW_OFFLINE
 from term_timer_clients.viewer.client import WINDOW_TITLE
 from term_timer_clients.viewer.client import CubeCast
-from term_timer_clients.viewer.clock import MOVE_LEAD
-from term_timer_clients.viewer.clock import CubeClock
 from term_timer_clients.viewer.framing import DEMO_VIEW
 from term_timer_clients.viewer.framing import USER_ROTATION
 from term_timer_clients.viewer.framing import USER_VIEW
@@ -318,120 +318,12 @@ class CubeMoveTestCase(ClientTestCase):
         self.viewer.push.assert_called_once_with('[R,', age=MOVE_LEAD)
 
 
-class CubeClockTestCase(unittest.TestCase):
-    """Where the clock of the cube is read to stand."""
-
-    def test_a_cube_stamping_nothing_gets_the_lead(self) -> None:
-        """A move nothing dates is as old as every move is."""
-        clock = CubeClock(lead=0.05)
-
-        self.assertEqual(clock.age(None, 10.0), 0.05)
-
-    def test_the_first_move_is_as_old_as_the_lead(self) -> None:
-        """One arrival says nothing of a delay, having nothing to beat."""
-        clock = CubeClock(lead=0.05)
-
-        self.assertAlmostEqual(clock.age(1000.0, 10.0), 0.05)
-
-    def test_a_move_held_up_is_aged_by_what_it_lost(self) -> None:
-        """What an arrival exceeds the quickest one by is its own delay."""
-        clock = CubeClock(lead=0.05)
-
-        clock.age(1000.0, 10.0)
-
-        self.assertAlmostEqual(clock.age(1100.0, 10.13), 0.08)
-
-    def test_the_quickest_arrival_is_the_reference(self) -> None:
-        """A packet beating them all takes the offset down with it."""
-        clock = CubeClock(lead=0.05)
-
-        clock.age(1000.0, 10.2)
-
-        self.assertAlmostEqual(clock.age(1100.0, 10.1), 0.05)
-        self.assertAlmostEqual(clock.age(1200.0, 10.4), 0.25)
-
-    def test_a_burst_is_dated_by_the_cube_and_not_by_the_packet(self) -> None:
-        """
-        Two moves handed over at once are put back where they happened.
-
-        This is the whole of what reading the clock of the cube buys: a
-        bluetooth stack batching a pair gives them one arrival, and the
-        older of the two has to be played as the older of the two - a
-        hundred and twenty milliseconds apart here, which is the gap the
-        fingers made and not the one the radio reports.
-        """
-        clock = CubeClock(lead=0.0)
-
-        clock.age(1000.0, 10.0)
-        clock.age(1120.0, 10.0)
-
-        first = clock.age(2000.0, 11.0)
-        second = clock.age(2120.0, 11.0)
-
-        self.assertAlmostEqual(first - second, 0.12)
-        self.assertAlmostEqual(second, 0.0)
-
-    def test_the_first_burst_is_what_settles_the_offset(self) -> None:
-        """
-        A move is only known to be old once a younger one has been seen.
-
-        The offset is the quickest arrival there has been, so the head
-        of the very first burst is read before anything has yet shown
-        how quick the link can be, and is handed over younger than it
-        is. It is inherent to measuring a delay against a minimum, it
-        lasts one burst, and it errs on the side of the cube being
-        behind rather than ahead.
-        """
-        clock = CubeClock(lead=0.0)
-
-        first = clock.age(1000.0, 10.0)
-        second = clock.age(1120.0, 10.0)
-
-        self.assertAlmostEqual(first, 0.0)
-        self.assertAlmostEqual(second, 0.0)
-
-    def test_the_ceiling_keeps_a_turn_to_look_at(self) -> None:
-        """An age is never allowed to eat the whole of a turn."""
-        clock = CubeClock(lead=0.05, ceiling=0.06)
-
-        clock.age(1000.0, 10.0)
-
-        self.assertAlmostEqual(clock.age(2000.0, 11.5), 0.06)
-
-    def test_no_ceiling_holds_nothing_back(self) -> None:
-        """A clock told of no limit reports the age it measured."""
-        clock = CubeClock(lead=0.0, ceiling=0.0)
-
-        clock.age(1000.0, 10.0)
-
-        self.assertAlmostEqual(clock.age(1100.0, 10.5), 0.4)
-
-    def test_a_lucky_packet_is_forgotten_in_the_end(self) -> None:
-        """The window is what keeps one arrival from holding the offset."""
-        clock = CubeClock(lead=0.0, span=2)
-
-        clock.age(1000.0, 10.0)
-        clock.age(1100.0, 10.2)
-        clock.age(1200.0, 10.3)
-
-        self.assertAlmostEqual(clock.age(1300.0, 10.4), 0.0)
-
-    def test_a_clock_reset_forgets_the_cube_it_was_reading(self) -> None:
-        """What was measured belongs to the connection it was measured in."""
-        clock = CubeClock(lead=0.0)
-
-        clock.age(1000.0, 10.0)
-        clock.reset()
-
-        self.assertAlmostEqual(clock.age(9000.0, 20.0), 0.0)
-
-
 class CubeMoveAgeTestCase(ClientTestCase):
     """How old a move is by the time the viewer is handed it."""
 
     def test_a_move_is_pushed_as_old_as_it_is(self) -> None:
         """The age the clock reads is the age the viewer plays from."""
-        view = CubeCast(self.viewer, self.tracker, clock=CubeClock(lead=0.02))
+        view = CubeCast(self.viewer, self.tracker, clock=MoveClock(lead=0.02))
 
         view.dispatch(envelope('cube.move', {'move': 'R'}))
 
@@ -439,7 +331,7 @@ class CubeMoveAgeTestCase(ClientTestCase):
 
     def test_an_unreadable_stamp_is_dropped_rather_than_guessed(self) -> None:
         """A cube stamping nonsense is one nothing can be read from."""
-        view = CubeCast(self.viewer, self.tracker, clock=CubeClock(lead=0.02))
+        view = CubeCast(self.viewer, self.tracker, clock=MoveClock(lead=0.02))
 
         view.dispatch(
             envelope('cube.move', {'move': 'R', 'cube_timestamp': 'soon'}),
@@ -900,14 +792,16 @@ class AssemblyTestCase(unittest.TestCase):
 
         self.assertNotEqual(tumble_axis(cubies[0]), tumble_axis(cubies[1]))
 
-    def test_the_cube_is_measured_once(self) -> None:
-        """A geometry built once for good is measured once for good."""
-        assembly = Assembly()
-        reach = assembly.measure(solved_scene())
+    def test_the_blast_reaches_as_far_as_the_geometry_says(self) -> None:
+        """What the pieces are ranked by is read off the cube itself."""
+        scene = solved_scene()
 
-        self.assertGreater(reach, 0.0)
-        self.assertEqual(
-            assembly.measure(replace(solved_scene(), instances=())), reach,
+        self.assertAlmostEqual(
+            scene.geometry.reach,
+            max(
+                instance.cubie.center.length()
+                for instance in scene.instances
+            ),
         )
 
     def test_time_passes_before_the_picture_is_drawn(self) -> None:
@@ -1502,14 +1396,9 @@ class CubeCastHostTestCase(unittest.TestCase):
 
         self.viewer.press.assert_not_called()
 
-    def test_move_key_is_answered(self) -> None:
-        """A key the window does not use is claimed rather than played."""
-        glfw = MagicMock()
-
-        with patch.dict(sys.modules, {'glfw': glfw}):
-            answered = self.host.on_viewer_key(ord('R'))
-
-        self.assertTrue(answered)
+    def test_the_cube_is_turned_by_nothing_but_the_stream(self) -> None:
+        """The window says it plays no move, and the library holds it."""
+        self.assertFalse(self.host.moves)
 
     def test_viewer_key_is_still_read(self) -> None:
         """The keys of the viewer keep the meaning cubing-algs gives them."""
@@ -1528,9 +1417,8 @@ class CubeCastHostTestCase(unittest.TestCase):
         glfw.KEY_BACKSPACE = BACKSPACE
 
         with patch.dict(sys.modules, {'glfw': glfw}):
-            answered = self.host.on_viewer_key(BACKSPACE)
+            self.host.on_key(self.host.window, BACKSPACE, 0, glfw.PRESS, 0)
 
-        self.assertTrue(answered)
         self.viewer.reset_cube.assert_not_called()
 
     def test_a_view_key_reframes_the_cube(self) -> None:
@@ -1597,13 +1485,30 @@ class ShortcutsTestCase(unittest.TestCase):
             transparent=True,
         )
 
-    def test_the_mouse_is_the_one_of_the_library(self) -> None:
-        """A list of its own may not disagree with the window it names."""
-        for line in ('  Drag             Orbit the cube',
-                     '  Ctrl Drag        Carry the window across the screen'):
-            with self.subTest(line=line):
-                self.assertIn(line, VIEWER_HELP)
-                self.assertIn(line, self.host.shortcuts)
+    def test_every_inherited_line_is_the_one_of_the_library(self) -> None:
+        """A line this window did not add is a line it did not write."""
+        added = {'1', '2', '3'}
+        inherited = [
+            line
+            for line in self.host.shortcuts.splitlines()[1:]
+            if line.split()[0] not in added
+        ]
+
+        self.assertEqual(
+            inherited,
+            viewer_help(moves=False).splitlines()[1:],
+        )
+
+    def test_the_window_is_named_after_the_client(self) -> None:
+        """The heading is the one thing of the list this client owns."""
+        self.assertEqual(self.host.shortcuts.splitlines()[0], 'cube-cast')
+
+    def test_the_view_keys_are_offered(self) -> None:
+        """What this window adds to the library is in the list it prints."""
+        for keys in ('1', '2', '3'):
+            with self.subTest(keys=keys):
+                self.assertNotIn(f'  { keys } ', VIEWER_HELP)
+                self.assertIn(f'  { keys } ', self.host.shortcuts)
 
     def test_the_mouse_reads_the_same_in_both_modes(self) -> None:
         """One list of shortcuts, a mode changing nothing of the mouse."""
@@ -1619,6 +1524,10 @@ class ShortcutsTestCase(unittest.TestCase):
             with self.subTest(line=line):
                 self.assertIn(line, VIEWER_HELP)
                 self.assertNotIn(line, self.host.shortcuts)
+
+    def test_the_list_is_what_the_window_prints(self) -> None:
+        """A list written here is the one the host hands to its loop."""
+        self.assertEqual(self.host.help, self.host.shortcuts)
 
 
 class CadenceTestCase(unittest.TestCase):
@@ -1699,11 +1608,6 @@ class MainTestCase(unittest.TestCase):
         for value in ('1024', '1024x', 'wide x tall', ''):
             with self.subTest(value=value), self.assertRaises(SystemExit):
                 entry.build_parser({}).parse_args(['-e', ENDPOINT, '-w', value])
-
-    def test_parse_camera_rotation(self) -> None:
-        """A rotation naming its axes and their angles is taken as is."""
-        self.assertEqual(entry.parse_camera_rotation('y45x-34'), 'y45x-34')
-        self.assertEqual(entry.parse_camera_rotation(''), '')
 
     def test_rotation_rejects_what_is_not_one(self) -> None:
         """A rotation cubing-algs would silently drop stops the client."""

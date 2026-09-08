@@ -71,9 +71,14 @@ Three layers, and the boundaries between them are the point:
   `interrupted` or `crashed` leaves the very same window behind,
   because a stream that is over publishes no state and no move
   whatever carried it away.
-- **`viewer/clock.py`** — `CubeClock`, where the clock of the cube
-  stands next to the clock of the client, and the whole of what makes
-  `cube-cast` answer a hand rather than trail it. **A move is over by
+- **`MoveClock`, of cubing-algs** — where the clock of the cube stands
+  next to the clock of the client, and the whole of what makes
+  `cube-cast` answer a hand rather than trail it. It lives in the
+  library rather than here because it is the companion of the
+  `Viewer.push(age=)` the library documents: any producer stamping on
+  a clock of its own — a replay, another driver — reads its age the
+  same way, and none of the arithmetic knows a cube from a socket.
+  **A move is over by
   the time it is heard of**: the cube reports a face once it has
   stopped turning, the report crosses a bluetooth link and a stream,
   and the hand is elsewhere when the window finally hears about it. So
@@ -123,7 +128,7 @@ Three layers, and the boundaries between them are the point:
   of this is held in the frame of the window, which is why no
   orientation is passed here at all: a blast leaves the core in every
   direction at once. A piece is also drawn at the very share of its
-  travel it has covered (`shrink()`), because one ray points at the
+  travel it has covered (`Mat4.scaling()`), because one ray points at the
   camera: drawn whole, the piece on it would loom over the core it is
   leaving and blink out at the end of the blast. `CubeCast.present`
   is what moves it: a cube connected *and* described. Gathering on
@@ -145,9 +150,17 @@ Three layers, and the boundaries between them are the point:
   rendering of thirty years ago — and its rim light, which multiplies
   the color, has nothing left to multiply. So a waiting core is also
   taken matte, `core_specular_strength` and `core_specular_power`
-  dimmed and spread by `DORMANT_GLOSS` and `DORMANT_GLOSS_SPREAD`
-  through `dimmed()`, weighed by what is missing of the glow so the
-  sheen comes back exactly as the color does. It travels
+  dimmed and spread by the `DORMANT_*` terms, weighed by what is
+  missing of the glow so the sheen comes back exactly as the color
+  does. **One mix and never one per knob**: `dormant()` describes that
+  ball as a `Look` built on the one the viewer holds — differing by
+  the terms of the core alone — and `Look.blended()`, which cubing-algs
+  owns, reads every term of the two part of the way at once. So a knob
+  added to a look tomorrow travels without a line written here, and
+  nothing but the core can move. The lamp is the one thing left out of
+  it, and for a reason of shape: it is *turned* around the ball by an
+  angle, where everything else is read along a straight line. It
+  travels
   through `look.core_color`, which the `look=` of `Viewer.draw()`
   carries and which **cubing-algs holds since the `Look` field of the
   same name**: the `>=` of `pyproject.toml` is what says so, and it
@@ -265,13 +278,23 @@ Three layers, and the boundaries between them are the point:
   off. The stream is the only thing entitled to turn this cube: a face
   played from the keyboard — or a `Backspace` putting the cube back
   together — would drift the window away from the hardware with nothing
-  to bring the two back together, so `on_viewer_key()` claims every key
-  the window does not answer itself. `VIEWER_SHORTCUTS` is the list
-  that says so, written when the window opens through the `shortcuts`
-  field of `GlfwHost`. The three view keys are answered there too,
-  rather than in the viewer: cubing-algs has no notion of a view to
-  stand in, and `reframe()` is the whole of what they do — the framing
-  into `Viewer.rotation`, then `reset_camera()`.
+  to bring the two back together, so the host is built `moves=False`
+  and cubing-algs refuses them **at the door** rather than having a
+  key claimed one by one here. That flag also takes them out of the
+  list the window prints, which is the whole of why it is one flag and
+  not two: a window that answers fewer keys and a list that offers
+  fewer keys are the same decision, and they were two copies of it for
+  as long as the list was a block recopied here. `VIEWER_SHORTCUTS` is
+  now **composed** — `viewer_entries()` for the lines this window
+  inherits, `HelpEntry` for the three it adds, `help_block()` to write
+  them out — so a gesture reworded upstream is reworded here, and
+  `ShortcutsTestCase` compares the whole inherited half rather than
+  two lines of it. The three view keys are answered in
+  `on_viewer_key()` and everything else falls through to the host —
+  they are answered there rather than in the viewer because cubing-algs
+  has no notion of a view to stand in, and `reframe()` is the whole of
+  what they do: the framing into `Viewer.rotation`, then
+  `reset_camera()`.
   **Nothing here paints the ground**, and that is
   the whole of the subject: the window is cleared with the cold slate
   `VIEWER_BACKGROUND` of cubing-algs, and a client setting a ground of
@@ -303,9 +326,12 @@ Three layers, and the boundaries between them are the point:
   of cubing-algs, imported as `ROTATION` rather than recopied — a demo
   view drifting away from the framing it is the demo of is the one
   thing it may not do — and `user` is that elevation with the yaw
-  taken out, written here because what it names is a way of *holding*
-  a cube, about which a library changing its three quarter view has
-  nothing to say. `flipped()` **adds the half turn to the yaw and
+  taken out, **computed** and not written down: what the view names is
+  a way of *holding* a cube, about which a library changing its three
+  quarter view has nothing to say, but the height it is held at is
+  exactly what that library decides. So the yaw of `ROTATION` is
+  folded out of it rather than `x-34` being typed here, which would go
+  on saying `x-34` the day cubing-algs says something else. `flipped()` **adds the half turn to the yaw and
   writes the framing out again** rather than appending `y180` to it:
   the parts of a rotation do add up per axis, so appending would frame
   the very same thing, but what comes out is then a pile of the turns
@@ -333,11 +359,12 @@ Three layers, and the boundaries between them are the point:
   would be the mirror of *one* of them, and the other one could never
   be seen from behind at all. cubing-algs falls back on its default
   for a string it cannot read, which would open the very window the
-  option was meant to change and say nothing about it, so
-  `parse_camera_rotation()` refuses one against `valid_rotation()`
-  instead — the predicate the library publishes for exactly this, a
-  renderer wanting the fallback where a command line wants the
-  refusal.
+  option was meant to change and say nothing about it, so the option
+  is typed `rotation_argument`, which refuses one instead. It is the
+  library that holds it, next to the `valid_rotation()` it is written
+  on: the grammar belongs to whoever reads it, a renderer wants the
+  fallback where a command line wants the refusal, and the `--rotation`
+  of cubing-algs itself had the very same hole.
 - **`--no-gyroscope`** — a cube deaf to what turns it, and the option
   is *the absence of a tracker* rather than a topic dropped as it
   arrives: `build_host()` hands `None` to `Viewer` and to `CubeCast`
@@ -399,11 +426,12 @@ Three layers, and the boundaries between them are the point:
   carries the window, and **both are inherited**: which button orbits
   is what no mode may change, the drag being the one gesture a viewer
   is made of. What this side still owes the arrangement is that
-  `VIEWER_SHORTCUTS` — its own list, the keys turning a cube taken out
-  — says what the window it opens truly answers, and
-  `ShortcutsTestCase` is the assertion holding it: the two mouse lines
-  are compared to the `VIEWER_HELP` they came from, so a gesture that
-  moves upstream is noticed here rather than described wrongly.
+  `VIEWER_SHORTCUTS` — the lines of the library with the keys turning a
+  cube taken out, and three of its own added — says what the window it
+  opens truly answers, and `ShortcutsTestCase` is the assertion holding
+  it: every line this window did not add is compared to the
+  `viewer_help(moves=False)` it was composed from, so a gesture
+  reworded upstream is noticed here rather than described wrongly.
 
 `tt-tail` reads the stream in the main thread — `stream.receive()` in a
 loop rather than `stream.start()` — because nothing here needs that

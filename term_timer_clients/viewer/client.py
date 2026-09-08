@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 from typing import Any
 
 from cubing_algs.constants import ORIENTATION_FACE_MOVES
+from cubing_algs.display.gl import MoveClock
 from cubing_algs.display.gl import OrientationTracker
 from cubing_algs.display.gl import Viewer
 from cubing_algs.exceptions import CubingAlgsError
@@ -15,7 +16,6 @@ from cubing_algs.vcube import VCube
 from term_timer_clients.protocol import CUBE_PREFIX
 from term_timer_clients.protocol import PROTOCOL_VERSION
 from term_timer_clients.protocol import SESSION_END_TOPIC
-from term_timer_clients.viewer.clock import CubeClock
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -46,7 +46,7 @@ class CubeCast:
     very moment it is heard and never held back for the next frame, and
     it is pushed with the **age** it has already reached: a face is
     over by the time the window hears of it, so the turn is started
-    where it would already stand rather than from zero. ``CubeClock``
+    where it would already stand rather than from zero. ``MoveClock``
     is what reads that age.
 
     The envelope is read before its payload: a session identifier that
@@ -59,7 +59,7 @@ class CubeCast:
             viewer: Viewer,
             tracker: OrientationTracker | None = None,
             orientation: str = '',
-            clock: CubeClock | None = None,
+            clock: MoveClock | None = None,
     ) -> None:
         """
         Bind a viewer to the stream that will feed it.
@@ -78,7 +78,7 @@ class CubeCast:
         self.viewer = viewer
         self.tracker = tracker
         self.orientation = orientation
-        self.clock = clock if clock is not None else CubeClock()
+        self.clock = clock if clock is not None else MoveClock()
 
         # The rotations that bring the cube to the faces it is shown
         # by, and nothing at all when it is shown as it is held

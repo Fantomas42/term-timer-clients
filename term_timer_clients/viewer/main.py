@@ -6,12 +6,13 @@ from argparse import Namespace
 from collections.abc import Collection
 
 from cubing_algs.constants import ORIENTATIONS
+from cubing_algs.display.gl import MoveClock
 from cubing_algs.display.gl import OrientationTracker
 from cubing_algs.display.gl import Viewer
 from cubing_algs.display.gl import orientation_basis
 from cubing_algs.display.mode import MODE_CONFIGS
 from cubing_algs.display.palettes import PALETTES
-from cubing_algs.display.rotation import valid_rotation
+from cubing_algs.display.rotation import rotation_argument
 from cubing_algs.exceptions import CubingAlgsError
 from cubing_algs.vcube import VCube
 
@@ -26,7 +27,6 @@ from term_timer_clients.protocol import CUBE_PREFIX
 from term_timer_clients.protocol import SESSION_END_TOPIC
 from term_timer_clients.protocol import EventStream
 from term_timer_clients.viewer.client import CubeCast
-from term_timer_clients.viewer.clock import CubeClock
 from term_timer_clients.viewer.framing import DEFAULT_VIEW
 from term_timer_clients.viewer.framing import VIEWS
 from term_timer_clients.viewer.framing import Framing
@@ -59,8 +59,8 @@ DEFAULT_MODE = ''
 # bluetooth link, the delay from the gesture to the cube landing is
 # `latency + beat - lead`, so every millisecond of visible turn is a
 # millisecond of retard and there is no third term to trade against.
-# A hundred and fifty is where a cube stops feeling like it is being
-# dragged, against the four hundred of the cubing-algs beat, which is
+# A hundred is where a cube stops feeling like it is being dragged,
+# against the two hundred and eighty of the cubing-algs beat, which is
 # written for an algorithm one reads rather than for a hand one follows.
 #
 # The two are **not independent**: a lead only ever takes effect while
@@ -194,34 +194,6 @@ def parse_lead(value: str) -> float:
     return read_milliseconds(value, 0)
 
 
-def parse_camera_rotation(value: str) -> str:
-    """
-    Read the angle a ``--rotation`` argument frames the cube from.
-
-    cubing-algs falls back on its own framing for a string it cannot
-    read, so a typo would open the very window it was meant to change,
-    with nothing said about it: it is refused here instead.
-
-    Args:
-        value: The argument, as it was typed.
-
-    Returns:
-        The rotation string, empty for the framing of cubing-algs.
-
-    Raises:
-        ArgumentTypeError: When the argument names no rotation.
-
-    """
-    if value and not valid_rotation(value):
-        msg = (
-            f'"{ value }" is not a rotation, '
-            f'expected AXISDEGREES parts, e.g. y45x-34'
-        )
-        raise ArgumentTypeError(msg)
-
-    return value
-
-
 def parse_size(value: str) -> tuple[int, int]:
     """
     Read the size of the window a ``WIDTHxHEIGHT`` argument names.
@@ -317,7 +289,7 @@ def build_parser(config: Config) -> ArgumentParser:
     )
     parser.add_argument(
         '-r', '--rotation',
-        type=parse_camera_rotation,
+        type=rotation_argument,
         default=DEFAULT_ROTATION,
         metavar='ROTATION',
         help=(
@@ -473,7 +445,7 @@ def build_host(options: Namespace) -> CubeCastHost:
     # was typed is never held back by it - a lead of its own is an
     # answer about this link, and this only ever bounds what the jitter
     # of the link adds on top of it.
-    clock = CubeClock(
+    clock = MoveClock(
         lead=options.lead,
         ceiling=max(options.lead, options.beat * LEAD_SHARE),
     )

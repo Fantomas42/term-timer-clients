@@ -1,11 +1,10 @@
 """The cube imploding around its core, and exploding away from it."""
 import math
 from dataclasses import dataclass
-from dataclasses import field
 from dataclasses import replace
 
-from cubing_algs.display.gl.constants import CORE_COLOR
 from cubing_algs.display.gl.constants import Look
+from cubing_algs.display.gl.constants import clamp
 from cubing_algs.display.gl.geometry import Cubie
 from cubing_algs.display.gl.scene import CubieInstance
 from cubing_algs.display.gl.scene import Scene
@@ -69,7 +68,7 @@ TUMBLE = 1.2
 # multiplies the color, and there is nothing to multiply on black. A
 # breath of cold away from neutral, so that the teal it breathes to is
 # where the color already leans.
-DORMANT_CORE: tuple[float, float, float] = (0.066, 0.071, 0.071)
+DORMANT_CORE = Vec3(0.066, 0.071, 0.071)
 
 # What the breath carries that ball to and back from: the very hue of
 # a live core, taken far down into the dark. The wait wears the color
@@ -80,7 +79,7 @@ DORMANT_CORE: tuple[float, float, float] = (0.066, 0.071, 0.071)
 # light and not the hue: a sixth of what a running cube is drawn
 # with, a swell to be found by an eye resting on the window and never
 # a cube announcing itself.
-PULSE_CORE: tuple[float, float, float] = (0.032, 0.109, 0.109)
+PULSE_CORE = Vec3(0.032, 0.109, 0.109)
 
 # Seconds of one full breath of a core left on its own, in and back
 # out. A ball sitting perfectly still says nothing about whether the
@@ -167,64 +166,6 @@ DORMANT_METALNESS = 0.65
 # blast of the pieces instead, the departure being one gesture where
 # the arrival is two.
 CORE_DURATION = 0.5
-
-
-def clamp(value: float) -> float:
-    """
-    Hold a value inside the unit interval.
-
-    Args:
-        value: The value to bound.
-
-    Returns:
-        The value, brought back between zero and one.
-
-    """
-    return min(1.0, max(0.0, value))
-
-
-def dimmed(value: float, dormant: float, missing: float) -> float:
-    """
-    Blend one term of the light between its connected value and the
-    one a core with nothing behind it wears.
-
-    Weighed by what the core is missing rather than by the breath: a
-    ball on standby carries the dormant term for as long as it waits,
-    where the swell is what says it is still waiting. So the term
-    lands exactly on the dormant one when nothing is connected and
-    exactly on the look's own one the moment it is - whichever of the
-    two happens to be the larger, a highlight being as free to grow
-    while waiting as to shrink into it.
-
-    Args:
-        value: The term as the look gives it, once connected.
-        dormant: The term a core with no cube behind it wears instead.
-        missing: How much of the live core is still to come.
-
-    Returns:
-        The term, blended for the moment.
-
-    """
-    return value + (dormant - value) * missing
-
-
-def shrink(scale: float) -> Mat4:
-    """
-    Build the matrix drawing a piece at a share of its own size.
-
-    Args:
-        scale: How much of itself the piece is drawn at.
-
-    Returns:
-        The matrix scaling a piece around its own center.
-
-    """
-    return Mat4.from_rows((
-        (scale, 0.0, 0.0, 0.0),
-        (0.0, scale, 0.0, 0.0),
-        (0.0, 0.0, scale, 0.0),
-        (0.0, 0.0, 0.0, 1.0),
-    ))
 
 
 def blast(phase: float) -> float:
@@ -328,7 +269,7 @@ def spun(
     return (turn.x, turn.y, turn.z)
 
 
-def waiting_core(elapsed: float) -> tuple[float, float, float]:
+def waiting_core(elapsed: float) -> Vec3:
     """
     Paint the core of a cube nobody is connected to, breathing.
 
@@ -347,40 +288,42 @@ def waiting_core(elapsed: float) -> tuple[float, float, float]:
         The color the ball core is painted with while it waits.
 
     """
-    share = breath(elapsed)
-
-    return (
-        DORMANT_CORE[0] + (PULSE_CORE[0] - DORMANT_CORE[0]) * share,
-        DORMANT_CORE[1] + (PULSE_CORE[1] - DORMANT_CORE[1]) * share,
-        DORMANT_CORE[2] + (PULSE_CORE[2] - DORMANT_CORE[2]) * share,
-    )
+    return DORMANT_CORE.lerp(PULSE_CORE, breath(elapsed))
 
 
-def core_color(share: float, elapsed: float) -> tuple[float, float, float]:
+def dormant(look: Look, elapsed: float) -> Look:
     """
-    Mix the waiting core and the live one, channel by channel.
+    Describe the light a core with nothing behind it stands in.
 
-    The breath lives in the waiting end of the mix alone, which is what
-    makes it fade of itself as the pieces gather: a cube barely started
-    has already lost most of its breath, and a cube whole has none of
-    it at all.
+    Built **on the look it is handed** rather than written out whole:
+    what a dormant core changes is the core, and every other term - the
+    ambient, the grooves, the rim of a sticker - is the one the viewer
+    was built with. So the two looks differ by the ball alone, and
+    mixing them can therefore be asked of all of their terms at once
+    without any of the rest ever moving.
+
+    The lamp is not in it, and that is not an oversight: it is walked
+    around the ball by an angle, where everything here travels in a
+    straight line, and a direction read part of the way between two
+    others is not the same direction as one turned part of the way.
 
     Args:
-        share: How much of the live color to take, from none of it to
-            all of it.
+        look: How the light falls on the cube, as the viewer holds it.
         elapsed: Seconds gone by since the viewer opened, wrapped on a
             period.
 
     Returns:
-        The color the ball core is painted with.
+        The look a core with no cube behind it is drawn in.
 
     """
-    dormant = waiting_core(elapsed)
-
-    return (
-        dormant[0] + (CORE_COLOR[0] - dormant[0]) * share,
-        dormant[1] + (CORE_COLOR[1] - dormant[1]) * share,
-        dormant[2] + (CORE_COLOR[2] - dormant[2]) * share,
+    return replace(
+        look,
+        core_color=waiting_core(elapsed),
+        core_specular_strength=DORMANT_SPECULAR_STRENGTH,
+        core_specular_power=DORMANT_SPECULAR_POWER,
+        core_rim_strength=DORMANT_RIM_STRENGTH,
+        core_rim_power=DORMANT_RIM_POWER,
+        core_metalness=DORMANT_METALNESS,
     )
 
 
@@ -497,7 +440,7 @@ class Flight:
 
         return replace(
             instance,
-            model=throw @ instance.model @ tumble @ shrink(phase),
+            model=throw @ instance.model @ tumble @ Mat4.scaling(phase),
         )
 
 
@@ -562,59 +505,6 @@ class Assembly:
     # where the lamp would be dragged to the moment the link drops.
     # A cube going away has to see the light *start* moving, not land.
     turned: float = 0.0
-
-    # The distance of the farthest piece from the center of the cube,
-    # which the reach of the blast and the ranking are both measured
-    # in. Read off a scene rather than given: the geometry of a viewer
-    # is built once and never changes, so measuring it once is
-    # measuring it for good.
-    reach: float = field(init=False, default=0.0)
-
-    # The cube with no piece at all, kept rather than rebuilt: it is
-    # what a viewer with no cube draws frame after frame, and a
-    # renderer skips the upload of a scene it recognizes by identity.
-    hidden: Scene | None = field(init=False, default=None)
-
-    def measure(self, scene: Scene) -> float:
-        """
-        Tell how far the cube reaches, measuring it once.
-
-        Args:
-            scene: The cube being drawn.
-
-        Returns:
-            The distance from the center of the cube to the center of
-            its farthest piece.
-
-        """
-        if not self.reach:
-            self.reach = max(
-                instance.cubie.center.length()
-                for instance in scene.instances
-            )
-
-        return self.reach
-
-    def empty(self, scene: Scene) -> Scene:
-        """
-        Hand a cube with no piece at all over.
-
-        Nothing is drawn away from the window and hoped to be out of
-        it: the pieces are simply not handed to the renderer, and the
-        ball core, which is drawn on its own before them, is left alone
-        in the window.
-
-        Args:
-            scene: The cube being drawn.
-
-        Returns:
-            The very same cube, its pieces held back.
-
-        """
-        if self.hidden is None:
-            self.hidden = replace(scene, instances=())
-
-        return self.hidden
 
     def settle(self, *, present: bool, linked: bool, delta: float) -> None:
         """
@@ -689,7 +579,10 @@ class Assembly:
         A cube whole hands the very same scene back, so the effect
         costs nothing at all once it is over - which is the state a
         viewer spends its life in, and the one the instance buffer is
-        cached on.
+        cached on. A cube blown away is the same bargain the other way
+        round: ``Scene.emptied()`` promises the very same object at
+        every frame, so a window nobody is connected to uploads
+        nothing either.
 
         Args:
             scene: The cube being drawn.
@@ -702,20 +595,14 @@ class Assembly:
             return scene
 
         if self.progress <= 0.0:
-            return self.empty(scene)
+            return scene.emptied()
 
         flight = Flight(
-            reach=self.measure(scene),
+            reach=scene.geometry.reach,
             progress=self.progress,
         )
 
-        return replace(
-            scene,
-            instances=tuple(
-                flight.place(instance)
-                for instance in scene.instances
-            ),
-        )
+        return scene.mapped(flight.place)
 
     def tint(self, look: Look) -> Look:
         """
@@ -789,27 +676,23 @@ class Assembly:
         missing = 1.0 - self.glow
         waiting = breath(self.elapsed) * missing
 
+        # One mix and not one per knob: the dormant look differs from
+        # the live one by the terms of the ball alone, so every term
+        # can be read part of the way at once and nothing but the core
+        # ever moves. What is missing of the glow is the weight, so a
+        # core lit is handed the very look it came with, term for term.
+        lit = look.blended(dormant(look, self.elapsed), missing)
+
         return replace(
-            look,
-            core_color=core_color(self.glow, self.elapsed),
+            lit,
             light_direction=spun(
                 look.light_direction, self.turned, missing,
             ),
-            core_rim_strength=dimmed(
-                look.core_rim_strength, DORMANT_RIM_STRENGTH, missing,
-            ) * (1.0 + PULSE_RIM * waiting),
-            core_rim_power=dimmed(
-                look.core_rim_power, DORMANT_RIM_POWER, missing,
-            ) * (1.0 - PULSE_HALO * waiting),
-            core_specular_strength=dimmed(
-                look.core_specular_strength, DORMANT_SPECULAR_STRENGTH,
-                missing,
+            core_rim_strength=(
+                lit.core_rim_strength * (1.0 + PULSE_RIM * waiting)
             ),
-            core_specular_power=dimmed(
-                look.core_specular_power, DORMANT_SPECULAR_POWER, missing,
-            ),
-            core_metalness=dimmed(
-                look.core_metalness, DORMANT_METALNESS, missing,
+            core_rim_power=(
+                lit.core_rim_power * (1.0 - PULSE_HALO * waiting)
             ),
         )
 
