@@ -8,9 +8,10 @@ from collections.abc import Collection
 from cubing_algs.constants import ORIENTATIONS
 from cubing_algs.display.gl import OrientationTracker
 from cubing_algs.display.gl import Viewer
-from cubing_algs.display.image import ROTATION_PATTERN
+from cubing_algs.display.gl import orientation_basis
 from cubing_algs.display.mode import MODE_CONFIGS
 from cubing_algs.display.palettes import PALETTES
+from cubing_algs.display.rotation import valid_rotation
 from cubing_algs.exceptions import CubingAlgsError
 from cubing_algs.vcube import VCube
 
@@ -25,7 +26,6 @@ from term_timer_clients.protocol import CUBE_PREFIX
 from term_timer_clients.protocol import SESSION_END_TOPIC
 from term_timer_clients.protocol import EventStream
 from term_timer_clients.viewer.client import CubeCast
-from term_timer_clients.viewer.client import orientation_basis
 from term_timer_clients.viewer.clock import CubeClock
 from term_timer_clients.viewer.framing import DEFAULT_VIEW
 from term_timer_clients.viewer.framing import VIEWS
@@ -212,7 +212,7 @@ def parse_camera_rotation(value: str) -> str:
         ArgumentTypeError: When the argument names no rotation.
 
     """
-    if value and not ROTATION_PATTERN.match(value):
+    if value and not valid_rotation(value):
         msg = (
             f'"{ value }" is not a rotation, '
             f'expected AXISDEGREES parts, e.g. y45x-34'
@@ -515,7 +515,7 @@ def main() -> int:
     try:
         host.run()
     except CubingAlgsError as error:
-        logger.error('Cannot open a window: %s', error)  # noqa: TRY400
+        logger.error('Cannot open a window: %s', error)  # ruff: ignore[error-instead-of-exception]
         return 1
     except KeyboardInterrupt:
         logger.info('Closing the window')

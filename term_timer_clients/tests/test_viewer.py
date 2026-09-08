@@ -16,17 +16,17 @@ from unittest.mock import MagicMock
 from unittest.mock import create_autospec
 from unittest.mock import patch
 
-from cubing_algs.constants import ORIENTATIONS
 from cubing_algs.display.constants import ROTATION
 from cubing_algs.display.gl import Look
 from cubing_algs.display.gl import OrientationTracker
 from cubing_algs.display.gl import Viewer
+from cubing_algs.display.gl import orientation_basis
 from cubing_algs.display.gl.camera import parse_rotation
 from cubing_algs.display.gl.constants import CORE_COLOR
 from cubing_algs.display.gl.constants import DEFAULT_LOOK
 from cubing_algs.display.gl.constants import VIEWER_BACKGROUND
+from cubing_algs.display.gl.constants import VIEWER_HELP
 from cubing_algs.display.gl.context import GLContextError
-from cubing_algs.display.gl.host import GlfwHost
 from cubing_algs.display.gl.scene import CubieInstance
 from cubing_algs.display.gl.scene import Scene
 from cubing_algs.display.gl.transforms import ORIGIN
@@ -38,7 +38,6 @@ from term_timer_clients.protocol import SESSION_END_TOPIC
 from term_timer_clients.protocol import SESSION_PREFIX
 from term_timer_clients.tests.fixtures import envelope
 from term_timer_clients.tests.fixtures import envelopes
-from term_timer_clients.viewer import host as window
 from term_timer_clients.viewer import main as entry
 from term_timer_clients.viewer.assembly import CORE_DURATION
 from term_timer_clients.viewer.assembly import DORMANT_CORE
@@ -55,7 +54,6 @@ from term_timer_clients.viewer.assembly import waiting_core
 from term_timer_clients.viewer.client import WINDOW_OFFLINE
 from term_timer_clients.viewer.client import WINDOW_TITLE
 from term_timer_clients.viewer.client import CubeCast
-from term_timer_clients.viewer.client import orientation_basis
 from term_timer_clients.viewer.clock import MOVE_LEAD
 from term_timer_clients.viewer.clock import CubeClock
 from term_timer_clients.viewer.framing import DEMO_VIEW
@@ -63,7 +61,6 @@ from term_timer_clients.viewer.framing import USER_ROTATION
 from term_timer_clients.viewer.framing import USER_VIEW
 from term_timer_clients.viewer.framing import Framing
 from term_timer_clients.viewer.framing import flipped
-from term_timer_clients.viewer.host import TRANSPARENT
 from term_timer_clients.viewer.host import CubeCastHost
 
 ENDPOINT = 'tcp://127.0.0.1:5333'
@@ -1322,85 +1319,8 @@ class CaptureTestCase(unittest.TestCase):
         self.assertIsNotNone(view.tracker.reference)  # type: ignore[union-attr]
 
 
-# The six face normals of a solved cube, written out rather than read
-# off ``AXIS_X``/``AXIS_Y``/``AXIS_Z``: what this file has to prove is
-# the geometry an orientation composes, not that it agrees with
-# whichever constants happen to back it.
-FACE_NORMALS: dict[str, Vec3] = {
-    'U': Vec3(0.0, 1.0, 0.0),
-    'D': Vec3(0.0, -1.0, 0.0),
-    'R': Vec3(1.0, 0.0, 0.0),
-    'L': Vec3(-1.0, 0.0, 0.0),
-    'F': Vec3(0.0, 0.0, 1.0),
-    'B': Vec3(0.0, 0.0, -1.0),
-}
-
-
-def assert_vec3_close(
-        case: unittest.TestCase,
-        actual: Vec3,
-        expected: Vec3,
-) -> None:
-    """
-    Compare two vectors component by component, trig rounding allowed.
-
-    Args:
-        case: The test case the assertion is raised on.
-        actual: The vector as computed.
-        expected: The vector it is expected to be close to.
-
-    """
-    for got, want in zip(actual, expected, strict=True):
-        case.assertAlmostEqual(got, want)
-
-
-class OrientationBasisTestCase(unittest.TestCase):
-    """The rotation an ``-o`` orientation applies to the physical cube."""
-
-    def test_every_orientation_frames_its_named_faces(self) -> None:
-        """A name's top face lands on +Y, its front face on +Z."""
-        for name in ORIENTATIONS:
-            with self.subTest(orientation=name):
-                basis = orientation_basis(name)
-                top, front = name[0], name[1]
-
-                assert_vec3_close(
-                    self,
-                    basis.rotate(FACE_NORMALS[top]),
-                    Vec3(0.0, 1.0, 0.0),
-                )
-                assert_vec3_close(
-                    self,
-                    basis.rotate(FACE_NORMALS[front]),
-                    Vec3(0.0, 0.0, 1.0),
-                )
-
-    def test_empty_orientation_is_the_identity(self) -> None:
-        """A cube shown as it is held gets no rotation at all."""
-        self.assertEqual(orientation_basis(''), Quat.identity())
-
-    def test_the_display_orientation_conjugates_the_tracker(self) -> None:
-        """Under -o DF, a tracked rotation renders M * R * M-1, not R."""
-        basis = orientation_basis('DF')
-
-        plain = OrientationTracker()
-        oriented = OrientationTracker(basis=basis)
-
-        for w, x, y, z in (
-                (1.0, 0.0, 0.0, 0.0),
-                (0.92388, 0.38268, 0.0, 0.0),
-        ):
-            plain.update(w, x, y, z)
-            oriented.update(w, x, y, z)
-
-        expected = (
-            basis * plain.orientation * basis.conjugate()
-        ).normalized()
-
-        for got, want in zip(
-                oriented.orientation, expected, strict=True,
-        ):
-            self.assertAlmostEqual(got, want)
+class TrackerBasisTestCase(unittest.TestCase):
+    """What the client hands the tracker of cubing-algs."""
 
     def test_a_tracker_opened_without_orientation_applies_no_correction(
             self,
@@ -1528,38 +1448,48 @@ class CubeCastHostTestCase(unittest.TestCase):
             waiting_core(0.016),
         )
 
-    def test_unchanged_title_is_not_written(self) -> None:
-        """A title that did not move is not written again."""
-        glfw = MagicMock()
-        self.host.window = object()
-
-        with patch.dict(sys.modules, {'glfw': glfw}):
-            self.host.retitle()
-
-        glfw.set_window_title.assert_not_called()
-
     def test_new_title_reaches_the_window(self) -> None:
-        """A title the stream changed reaches the window bar."""
+        """What the stream says of the cube reaches the bar at the frame."""
         glfw = MagicMock()
         self.host.window = object()
+        self.viewer.advance.return_value = solved_scene()
+        self.viewer.look = DEFAULT_LOOK
         self.view.dispatch(
             envelope('cube.hardware', {'hardware_name': 'GANi3'}),
         )
 
         with patch.dict(sys.modules, {'glfw': glfw}):
-            self.host.retitle()
+            self.host.frame(0.016)
 
         glfw.set_window_title.assert_called_once_with(
             self.host.window, f'{ WINDOW_TITLE } · GANi3',
         )
 
-    def test_title_without_a_window_is_only_remembered(self) -> None:
-        """A host with no window keeps the title for when it opens."""
+    def test_unchanged_title_is_not_written_again(self) -> None:
+        """A title pushed at the cadence of the frames is written once."""
+        glfw = MagicMock()
+        self.host.window = object()
+        self.viewer.advance.return_value = solved_scene()
+        self.viewer.look = DEFAULT_LOOK
         self.view.dispatch(
             envelope('cube.hardware', {'hardware_name': 'GANi3'}),
         )
 
-        self.host.retitle()
+        with patch.dict(sys.modules, {'glfw': glfw}):
+            self.host.frame(0.016)
+            self.host.frame(0.016)
+
+        glfw.set_window_title.assert_called_once()
+
+    def test_title_without_a_window_is_only_remembered(self) -> None:
+        """A host with no window keeps the title for when it opens."""
+        self.viewer.advance.return_value = solved_scene()
+        self.viewer.look = DEFAULT_LOOK
+        self.view.dispatch(
+            envelope('cube.hardware', {'hardware_name': 'GANi3'}),
+        )
+
+        self.host.frame(0.016)
 
         self.assertEqual(self.host.title, f'{ WINDOW_TITLE } · GANi3')
 
@@ -1651,11 +1581,11 @@ class CubeCastHostTestCase(unittest.TestCase):
         self.assertIn('Esc, Q', self.host.shortcuts)
 
 
-class CubeCastHostWindowCase(unittest.TestCase):
-    """What every test of the window is wired on, and no test."""
+class ShortcutsTestCase(unittest.TestCase):
+    """The list a window prints, against the window it opens."""
 
     def setUp(self) -> None:
-        """Wire a transparent host on a mocked viewer and a client."""
+        """Wire a host on a mocked viewer and a client."""
         self.viewer = create_autospec(Viewer, instance=True)
         self.viewer.cube = VCube()
         self.viewer.look = Look()
@@ -1667,346 +1597,28 @@ class CubeCastHostWindowCase(unittest.TestCase):
             transparent=True,
         )
 
-    def opaque_host(self) -> CubeCastHost:
-        """
-        Build the same host, on a window of the ordinary kind.
-
-        Returns:
-            A host drawing into a decorated, opaque window.
-
-        """
-        return CubeCastHost(
-            viewer=self.viewer, title=self.view.title, view=self.view,
-        )
-
-
-class CubeCastHostTransparentTestCase(CubeCastHostWindowCase):
-    """The cube laid on the desktop, and what it is drawn through."""
-
-    def test_window_is_asked_to_let_the_desktop_through(self) -> None:
-        """The three hints are posted before the window is created."""
-        glfw = MagicMock()
-        stage = MagicMock()
-
-        with (
-            patch.dict(sys.modules, {'glfw': glfw}),
-            patch.object(window, 'has_glfw', return_value=True),
-            patch.object(GlfwHost, 'open', return_value=stage),
-        ):
-            self.host.open()
-
-        hints = {call.args[0] for call in glfw.window_hint.call_args_list}
-
-        self.assertEqual(
-            hints,
-            {
-                glfw.TRANSPARENT_FRAMEBUFFER,
-                glfw.DECORATED,
-                glfw.FLOATING,
-            },
-        )
-        self.assertEqual(stage.background, TRANSPARENT)
-
-    def test_window_asks_for_no_samples_of_its_own(self) -> None:
-        """A multisampled window gets the transparency refused."""
-        glfw = MagicMock()
-        stage = MagicMock()
-        asked = []
-
-        def opened() -> MagicMock:
-            asked.append(self.viewer.look.samples)
-            return stage
-
-        with (
-            patch.dict(sys.modules, {'glfw': glfw}),
-            patch.object(window, 'has_glfw', return_value=True),
-            patch.object(GlfwHost, 'open', side_effect=opened),
-        ):
-            self.host.open()
-
-        self.assertEqual(asked, [0])
-
-        # Put back at once: the screenshot and the report read it too.
-        self.assertEqual(self.viewer.look.samples, Look().samples)
-
-    def test_refused_transparency_is_named(self) -> None:
-        """A compositor saying no leaves the cube on the viewer grey."""
-        glfw = MagicMock()
-        glfw.get_window_attrib.return_value = 0
-        stage = MagicMock()
-        stage.background = 'untouched'
-
-        with (
-            patch.dict(sys.modules, {'glfw': glfw}),
-            patch.object(window, 'has_glfw', return_value=True),
-            patch.object(GlfwHost, 'open', return_value=stage),
-            self.assertLogs('term_timer_clients.viewer.host', 'WARNING'),
-        ):
-            self.host.open()
-
-        self.assertEqual(stage.background, 'untouched')
-
-    def test_a_missing_glfw_is_left_to_the_parent(self) -> None:
-        """The extra to install is named by cubing-algs, not here."""
-        with (
-            patch.object(window, 'has_glfw', return_value=False),
-            patch.object(GlfwHost, 'open') as opened,
-        ):
-            self.host.open()
-
-        opened.assert_called_once_with()
-
-    def test_target_is_built_once_for_a_size(self) -> None:
-        """The offscreen target is kept until the window changes size."""
-        stage = MagicMock()
-        stage.size = (200, 200)
-        self.viewer.require_stage.return_value = stage
-        target = MagicMock()
-        target.size = (200, 200)
-
-        with patch.object(window, 'OffscreenTarget') as offscreen:
-            offscreen.create.return_value = target
-
-            self.host.refresh_target()
-            self.host.refresh_target()
-
-        offscreen.create.assert_called_once_with(
-            stage.context, (200, 200), Look().samples,
-        )
-        self.assertIs(stage.target, target.framebuffer)
-
-    def test_target_follows_a_resized_window(self) -> None:
-        """A window of another size is drawn into another target."""
-        stage = MagicMock()
-        stage.size = (400, 400)
-        self.viewer.require_stage.return_value = stage
-        target = MagicMock()
-        target.size = (200, 200)
-        self.host.target = target
-
-        with patch.object(window, 'OffscreenTarget') as offscreen:
-            self.host.refresh_target()
-
-        target.release.assert_called_once_with()
-        offscreen.create.assert_called_once()
-
-    def test_an_opaque_window_draws_into_itself(self) -> None:
-        """No detour is taken when the window holds its own samples."""
-        host = self.opaque_host()
-
-        with patch.object(window, 'OffscreenTarget') as offscreen:
-            host.refresh_target()
-
-        offscreen.create.assert_not_called()
-        self.assertIsNone(host.target)
-
-    def test_frame_lands_in_the_window(self) -> None:
-        """The frame is resolved, and then copied to the screen."""
-        stage = MagicMock()
-        self.viewer.require_stage.return_value = stage
-        target = MagicMock()
-        self.host.target = target
-
-        self.host.resolve()
-
-        stage.context.copy_framebuffer.assert_any_call(
-            target.resolved, target.framebuffer,
-        )
-        stage.context.copy_framebuffer.assert_any_call(
-            stage.context.screen, target.resolved,
-        )
-
-    def test_nothing_is_resolved_without_a_target(self) -> None:
-        """A window drawn into directly has nothing to copy."""
-        self.host.resolve()
-
-        self.viewer.require_stage.assert_not_called()
-
-    def test_close_gives_the_target_back(self) -> None:
-        """The target is released while the context is still alive."""
-        target = MagicMock()
-        self.host.target = target
-
-        self.host.close()
-
-        target.release.assert_called_once_with()
-        self.assertIsNone(self.host.target)
-
-
-class CubeCastHostMouseTestCase(CubeCastHostWindowCase):
-    """What the mouse does, and what it does the same in both modes."""
+    def test_the_mouse_is_the_one_of_the_library(self) -> None:
+        """A list of its own may not disagree with the window it names."""
+        for line in ('  Drag             Orbit the cube',
+                     '  Ctrl Drag        Carry the window across the screen'):
+            with self.subTest(line=line):
+                self.assertIn(line, VIEWER_HELP)
+                self.assertIn(line, self.host.shortcuts)
 
     def test_the_mouse_reads_the_same_in_both_modes(self) -> None:
         """One list of shortcuts, a mode changing nothing of the mouse."""
-        self.assertEqual(self.host.shortcuts, self.opaque_host().shortcuts)
-        self.assertIn('Ctrl Drag', self.host.shortcuts)
-        self.assertIn('Drag             Orbit', self.host.shortcuts)
-
-    def test_control_takes_hold_of_the_window(self) -> None:
-        """Ctrl over a drag carries the window instead of the cube."""
-        glfw = mouse_glfw()
-
-        with patch.dict(sys.modules, {'glfw': glfw}):
-            self.host.on_mouse_button(None, LEFT_BUTTON, PRESS, CONTROL)
-
-        self.assertTrue(self.host.carrying)
-        self.assertFalse(self.host.dragging)
-        self.assertEqual(self.host.anchor, (5.0, 7.0))
-
-    def test_a_plain_drag_orbits_a_window_with_no_bar(self) -> None:
-        """The gesture the viewer is made of is what a mode may not move."""
-        glfw = mouse_glfw()
-
-        with patch.dict(sys.modules, {'glfw': glfw}):
-            self.host.on_mouse_button(None, LEFT_BUTTON, PRESS, 0)
-
-        self.assertTrue(self.host.dragging)
-        self.assertFalse(self.host.carrying)
-
-    def test_an_opaque_window_is_carried_the_same_way(self) -> None:
-        """A window keeping its bar answers the carry all the same."""
-        host = self.opaque_host()
-        glfw = mouse_glfw()
-
-        with patch.dict(sys.modules, {'glfw': glfw}):
-            host.on_mouse_button(None, LEFT_BUTTON, PRESS, CONTROL)
-
-        self.assertTrue(host.carrying)
-        self.assertFalse(host.dragging)
-
-    def test_an_opaque_window_orbits_on_the_left(self) -> None:
-        """A decorated window keeps the buttons cubing-algs gives it."""
-        host = self.opaque_host()
-        glfw = mouse_glfw()
-
-        with patch.dict(sys.modules, {'glfw': glfw}):
-            host.on_mouse_button(None, LEFT_BUTTON, PRESS, 0)
-
-        self.assertTrue(host.dragging)
-        self.assertFalse(host.carrying)
-
-    def test_the_carry_ends_with_the_button(self) -> None:
-        """Ctrl let go halfway through carries the window all the same."""
-        glfw = mouse_glfw()
-        self.host.carrying = True
-
-        with patch.dict(sys.modules, {'glfw': glfw}):
-            self.host.on_mouse_button(None, LEFT_BUTTON, RELEASE, 0)
-
-        self.assertFalse(self.host.carrying)
-        self.assertFalse(self.host.dragging)
-
-    def test_another_button_is_left_to_the_parent(self) -> None:
-        """The right button does here what cubing-algs does with it."""
-        glfw = mouse_glfw()
-
-        with patch.dict(sys.modules, {'glfw': glfw}):
-            self.host.on_mouse_button(None, RIGHT_BUTTON, PRESS, 0)
-
-        self.assertFalse(self.host.dragging)
-        self.assertFalse(self.host.carrying)
-
-    def test_window_follows_the_cursor_it_is_held_by(self) -> None:
-        """The window moves by what the cursor gained on its anchor."""
-        glfw = mouse_glfw()
-        glfw.get_window_pos.return_value = (100, 100)
-        self.host.carrying = True
-        self.host.anchor = (10.0, 10.0)
-
-        with patch.dict(sys.modules, {'glfw': glfw}):
-            self.host.on_cursor(None, 30.0, 15.0)
-
-        glfw.set_window_pos.assert_called_once_with(
-            self.host.window, 120, 105,
+        opaque = CubeCastHost(
+            viewer=self.viewer, title=self.view.title, view=self.view,
         )
 
-    def test_a_window_nobody_holds_stays_put(self) -> None:
-        """A cursor moving over the window moves nothing by itself."""
-        glfw = mouse_glfw()
+        self.assertEqual(self.host.shortcuts, opaque.shortcuts)
 
-        with patch.dict(sys.modules, {'glfw': glfw}):
-            self.host.on_cursor(None, 30.0, 15.0)
-
-        glfw.set_window_pos.assert_not_called()
-
-
-class CubeCastHostAliasedTestCase(unittest.TestCase):
-    """A cube drawn into the window itself, antialiasing dropped."""
-
-    def setUp(self) -> None:
-        """Wire a host asked for no antialiasing at all."""
-        self.viewer = create_autospec(Viewer, instance=True)
-        self.viewer.cube = VCube()
-        self.viewer.look = Look()
-        self.view = CubeCast(self.viewer)
-
-    def build_host(self, *, transparent: bool, msaa: bool) -> CubeCastHost:
-        """
-        Build a host of either window, antialiased or not.
-
-        Args:
-            transparent: Whether the cube is laid on the desktop.
-            msaa: Whether the cube is antialiased at all.
-
-        Returns:
-            The host, on the mocked viewer of this case.
-
-        """
-        return CubeCastHost(
-            viewer=self.viewer,
-            title=self.view.title,
-            view=self.view,
-            transparent=transparent,
-            msaa=msaa,
-        )
-
-    def opened_samples(self, host: CubeCastHost) -> list[int]:
-        """
-        Read the samples the window was asked for as it opened.
-
-        Args:
-            host: The host to open, its parent mocked out.
-
-        Returns:
-            What the look of the viewer held while the parent opened.
-
-        """
-        asked = []
-
-        def opened() -> MagicMock:
-            asked.append(self.viewer.look.samples)
-            return MagicMock()
-
-        with patch.object(GlfwHost, 'open', side_effect=opened):
-            host.open()
-
-        return asked
-
-    def test_a_window_holding_its_samples_keeps_them(self) -> None:
-        """An ordinary window is opened as cubing-algs opens it."""
-        host = self.build_host(transparent=False, msaa=True)
-
-        self.assertEqual(self.opened_samples(host), [Look().samples])
-
-    def test_an_aliased_window_asks_for_no_samples(self) -> None:
-        """No antialiasing at all is no antialiasing in the window."""
-        host = self.build_host(transparent=False, msaa=False)
-
-        self.assertEqual(self.opened_samples(host), [0])
-
-        # Put back at once: the screenshot and the report read it too.
-        self.assertEqual(self.viewer.look.samples, Look().samples)
-
-    def test_an_aliased_window_draws_into_itself(self) -> None:
-        """A transparent window takes no detour either, asked aliased."""
-        host = self.build_host(transparent=True, msaa=False)
-
-        with patch.object(window, 'OffscreenTarget') as offscreen:
-            host.refresh_target()
-
-        offscreen.create.assert_not_called()
-        self.assertIsNone(host.target)
-        self.assertFalse(host.offscreen)
+    def test_no_move_is_offered_by_a_cube_turned_elsewhere(self) -> None:
+        """The keys turning a cube are not in the list of this window."""
+        for line in ('R U F L D B', 'Backspace'):
+            with self.subTest(line=line):
+                self.assertIn(line, VIEWER_HELP)
+                self.assertNotIn(line, self.host.shortcuts)
 
 
 class CadenceTestCase(unittest.TestCase):

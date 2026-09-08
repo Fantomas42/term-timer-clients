@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from typing import Self
 
 from cubing_algs.display.constants import ROTATION
-from cubing_algs.display.image import ImageDisplay
+from cubing_algs.display.rotation import turned_rotation
 
 # The three quarter view of cubing-algs: three faces at once and none
 # of them straight on, which is the framing an algorithm is read in and
@@ -35,24 +35,16 @@ VIEWS = (DEMO_VIEW, USER_VIEW)
 
 # What passing behind the cube costs, in degrees around the vertical.
 HALF_TURN = 180
-FULL_TURN = 360
-
-# The axes a framing is written with, in the order the camera composes
-# them: a yaw around the vertical, a pitch above the horizon, a roll
-# around the line of sight.
-AXES = ('y', 'x', 'z')
 
 
 def flipped(rotation: str) -> str:
     """
     Turn a framing half a turn around the vertical.
 
-    The half turn is added to the yaw the framing already carries and
-    the string is written out again, rather than appended to it: the
-    parts of a rotation do add up per axis, so appending would frame
-    the very same thing, but what comes out is then a pile of the
-    turns that were asked for instead of the angle the camera ends up
-    at. This is where the cube stands, and it says so.
+    The arithmetic of a framing belongs to cubing-algs, which owns the
+    grammar it is written in: what is said here is only that passing
+    behind a cube is half a turn of the yaw and nothing else - the
+    elevation is what makes the view, and it is kept.
 
     Args:
         rotation: The framing to pass behind, as the axis and angle
@@ -63,23 +55,7 @@ def flipped(rotation: str) -> str:
         very same height.
 
     """
-    parts = dict.fromkeys(AXES, 0)
-
-    for axis, degrees in ImageDisplay.parse_rotation(rotation):
-        parts[axis] += degrees
-
-    parts['y'] = (parts['y'] + HALF_TURN) % FULL_TURN
-
-    # The yaw is written whatever it says, where the other two are
-    # written only when they turn something: a framing whose parts all
-    # came out at zero would be an empty string, and an empty rotation
-    # is the framing of the library rather than a cube looked straight
-    # in the F face.
-    return ''.join(
-        f'{ axis }{ degrees }'
-        for axis, degrees in parts.items()
-        if degrees or axis == 'y'
-    )
+    return turned_rotation(rotation, yaw=HALF_TURN)
 
 
 @dataclass

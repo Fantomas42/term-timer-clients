@@ -310,10 +310,12 @@ Three layers, and the boundaries between them are the point:
   the parts of a rotation do add up per axis, so appending would frame
   the very same thing, but what comes out is then a pile of the turns
   that were asked for — `y45x-34y180` — instead of the angle the
-  camera ends up at. The yaw is always written, the pitch and the roll
-  only when they turn something: every part at zero would be an empty
-  string, and an empty rotation is the library default rather than a
-  cube looked straight in the F face. What comes out is written into
+  camera ends up at. The arithmetic itself is
+  `cubing_algs.display.rotation.turned_rotation()`, the grammar of a
+  framing belonging to the library that reads it: what is said here is
+  only that passing behind a cube is half a turn of the yaw and
+  nothing else, the elevation being what makes the view. What comes
+  out is written into
   `Viewer.rotation` and never into the camera, `reset_camera()`
   reading it: the view being watched is the view `Space` comes back
   to, mirror included.
@@ -332,8 +334,10 @@ Three layers, and the boundaries between them are the point:
   be seen from behind at all. cubing-algs falls back on its default
   for a string it cannot read, which would open the very window the
   option was meant to change and say nothing about it, so
-  `parse_camera_rotation()` refuses one against `ROTATION_PATTERN`
-  instead.
+  `parse_camera_rotation()` refuses one against `valid_rotation()`
+  instead — the predicate the library publishes for exactly this, a
+  renderer wanting the fallback where a command line wants the
+  refusal.
 - **`--no-gyroscope`** — a cube deaf to what turns it, and the option
   is *the absence of a tracker* rather than a topic dropped as it
   arrives: `build_host()` hands `None` to `Viewer` and to `CubeCast`
@@ -376,33 +380,30 @@ Three layers, and the boundaries between them are the point:
   jitter room to be worth measuring. A lead **typed** is honored
   whatever it says, asking for a cube that snaps being a thing one may
   want.
-- **`--transparent`** — a cube laid on the desktop, and the one place
-  the host reaches around `GlfwHost` rather than under it. The three
-  glfw hints it needs are posted *before* `super().open()` runs: hints
-  are a global state read when a window is created, and
-  `create_window()` adds its own to them instead of clearing them
-  first, which is what keeps the whole of `open()` inherited. A
-  multisampled window gets the transparency refused, so `viewer.look`
-  is dropped to zero samples for the length of that call and put back
-  at once — `F12` and `F4` read their samples from it too — and the
-  cube is antialiased in an `OffscreenTarget` resolved onto the window
-  in `frame()`. Both hypotheses are checked at runtime: a refused
-  transparency is read back off the window and logged. `--no-msaa`
-  gives that detour up: `offscreen` is what says a target is built at
-  all, and no antialiasing means none in the window either.
-- **The mouse** — a drag orbits the cube in either mode, and no mode
-  may move that: it is the one gesture the viewer is made of, and a
-  `--transparent` displacing it would make the flag change what the
-  hands do. What a window with no bar needs on top is the carry,
-  `Ctrl` held down at the press, and a decorated window answers it too
-  — there it merely doubles the bar it still has, which is what makes
-  the gesture learnable before the flag is ever passed. So
-  `VIEWER_SHORTCUTS` is one list, and `on_mouse_button()` reads the
-  modifier rather than the mode. The carry needs a window free to
-  place itself, and every window opened here is: cubing-algs hands a
-  Wayland session the X11 variant of glfw — moderngl having no way to
-  read a context off the other one — and refuses a window outright on
-  a platform that stayed Wayland.
+- **`--transparent` / `--no-msaa`** — a cube laid on the desktop, and
+  **two flags handed to `GlfwHost`** rather than a window opened here:
+  the hints, the answer of the compositor read back, the offscreen
+  target a transparent visual imposes on the antialiasing and the
+  resolve onto the window all belong to cubing-algs, none of them
+  knowing anything about a cube or a stream. It was written here for a
+  while, and the whole of that was the host **reaching around**
+  `GlfwHost` instead of under it — hints posted before
+  `super().open()`, `viewer.look` dropped to zero samples for the
+  length of the call and put back — because `create_window()` had no
+  word for them. It has one now, and the detour it needs lives in
+  `tick()` rather than in `frame()`, so the seam this client overrides
+  stays the cube and nothing else. What is still owed is the *title*: a
+  window with no bar has nowhere to show it, and it is written all the
+  same for a taskbar and an alt-tab to read.
+- **The mouse** — a drag orbits the cube and `Ctrl` held at the press
+  carries the window, and **both are inherited**: which button orbits
+  is what no mode may change, the drag being the one gesture a viewer
+  is made of. What this side still owes the arrangement is that
+  `VIEWER_SHORTCUTS` — its own list, the keys turning a cube taken out
+  — says what the window it opens truly answers, and
+  `ShortcutsTestCase` is the assertion holding it: the two mouse lines
+  are compared to the `VIEWER_HELP` they came from, so a gesture that
+  moves upstream is noticed here rather than described wrongly.
 
 `tt-tail` reads the stream in the main thread — `stream.receive()` in a
 loop rather than `stream.start()` — because nothing here needs that
@@ -416,7 +417,10 @@ arrive (the animation reads its cadence from that), while glfw demands
 its window
 be handled from the thread that opened it. So the stream only ever
 mutates state — `CubeCast.title` — and the window picks it up at the
-next `frame()`.
+next `frame()`, through the `set_title()` of `GlfwHost`: renaming a
+window belongs to the host that owns it, and what is written there is
+the base the debug counter appends its numbers to rather than the bar
+alone.
 
 A cube **announces its departure and never its arrival** — `cube.link`
 is published by term-timer rather than by a driver — and a client
