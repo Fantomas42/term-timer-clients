@@ -27,6 +27,9 @@ from term_timer_clients.protocol import EventStream
 from term_timer_clients.viewer.client import CubeCast
 from term_timer_clients.viewer.client import orientation_basis
 from term_timer_clients.viewer.clock import CubeClock
+from term_timer_clients.viewer.framing import DEFAULT_VIEW
+from term_timer_clients.viewer.framing import VIEWS
+from term_timer_clients.viewer.framing import Framing
 from term_timer_clients.viewer.host import CubeCastHost
 
 logger = logging.getLogger(__name__)
@@ -85,10 +88,12 @@ LEAD_SHARE = 0.75
 
 MILLISECONDS = 1000.0
 
-# The framing of cubing-algs. What is given here is also what the
-# camera goes back to on Space: the viewer reframes on the rotation it
-# opened with, and a window opened turned would be lost on the first
-# reset otherwise
+# The framing of cubing-algs, and what `--rotation` replaces: an angle
+# typed by hand is the demo view written out, rather than a fourth
+# framing standing next to the ones the keys reach - one typed and
+# left behind by the first key pressed would be an angle nothing can
+# ever come back to. What the view says is what the camera goes back
+# to on Space, the viewer reframing on the rotation it holds.
 DEFAULT_ROTATION = ''
 
 # The hardware plane, and the one message of the other one a window has
@@ -316,9 +321,30 @@ def build_parser(config: Config) -> ArgumentParser:
         default=DEFAULT_ROTATION,
         metavar='ROTATION',
         help=(
-            'Set the angle the camera looks the cube from,\n'
+            'Set the angle the demo view looks the cube from,\n'
             'as AXISDEGREES parts, e.g. y45x-34.\n'
             'Default: the framing of cubing-algs.'
+        ),
+    )
+    parser.add_argument(
+        '-v', '--view',
+        default=DEFAULT_VIEW,
+        choices=VIEWS,
+        metavar='VIEW',
+        help=(
+            'Set the view the window opens on.\n'
+            'demo: the cube seen by three faces at once.\n'
+            'user: the cube seen by its front and top faces.\n'
+            f'Default: { DEFAULT_VIEW }.'
+        ),
+    )
+    parser.add_argument(
+        '-i', '--mirror',
+        action='store_true',
+        help=(
+            'Look at the cube from behind: the view is seen\n'
+            'from the other side, at the same height.\n'
+            'Default: False.'
         ),
     )
     parser.add_argument(
@@ -368,7 +394,7 @@ def build_parser(config: Config) -> ArgumentParser:
         action='store_true',
         help=(
             'Leave the cube where the camera puts it, deaf to the\n'
-            'gyroscope: the window is framed by --rotation and the\n'
+            'gyroscope: the window is framed by the view and the\n'
             'mouse, and the moves alone come from the cube.\n'
             'Default: False.'
         ),
@@ -418,6 +444,14 @@ def build_host(options: Namespace) -> CubeCastHost:
         )
     )
 
+    # Where the camera stands, and what the view keys move it between.
+    # The viewer is built on the very string the framing hands over
+    # rather than on what was typed: `--rotation` is the demo view
+    # written by hand, and `--mirror` is the 3 key already pressed.
+    framing = Framing.opened_on(
+        options.view, options.rotation, mirrored=options.mirror,
+    )
+
     # A mode is resolved once, on the solved cube the viewer is built
     # with, and what is kept of it is the mask: the stream reposes the
     # cube on every state it describes, and the orientation a mode
@@ -428,7 +462,7 @@ def build_host(options: Namespace) -> CubeCastHost:
         cube=VCube(),
         palette=options.palette,
         mode=options.mode,
-        rotation=options.rotation,
+        rotation=framing.rotation,
         window_size=options.window_size,
         orientation=tracker,
         duration=options.beat,
@@ -450,6 +484,7 @@ def build_host(options: Namespace) -> CubeCastHost:
         viewer=viewer,
         title=view.title,
         view=view,
+        framing=framing,
         transparent=options.transparent,
         msaa=not options.no_msaa,
     )

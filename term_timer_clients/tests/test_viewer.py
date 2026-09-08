@@ -6,6 +6,7 @@ calls on a viewer, so a mocked one - or a real one, which needs no GPU
 until a stage is attached to it - is enough. The captures of
 ``tests/replays/gan_gen2/`` play the part of the cube.
 """
+import math
 import sys
 import unittest
 from dataclasses import replace
@@ -16,9 +17,11 @@ from unittest.mock import create_autospec
 from unittest.mock import patch
 
 from cubing_algs.constants import ORIENTATIONS
+from cubing_algs.display.constants import ROTATION
 from cubing_algs.display.gl import Look
 from cubing_algs.display.gl import OrientationTracker
 from cubing_algs.display.gl import Viewer
+from cubing_algs.display.gl.camera import parse_rotation
 from cubing_algs.display.gl.constants import CORE_COLOR
 from cubing_algs.display.gl.constants import DEFAULT_LOOK
 from cubing_algs.display.gl.constants import VIEWER_BACKGROUND
@@ -55,6 +58,11 @@ from term_timer_clients.viewer.client import CubeCast
 from term_timer_clients.viewer.client import orientation_basis
 from term_timer_clients.viewer.clock import MOVE_LEAD
 from term_timer_clients.viewer.clock import CubeClock
+from term_timer_clients.viewer.framing import DEMO_VIEW
+from term_timer_clients.viewer.framing import USER_ROTATION
+from term_timer_clients.viewer.framing import USER_VIEW
+from term_timer_clients.viewer.framing import Framing
+from term_timer_clients.viewer.framing import flipped
 from term_timer_clients.viewer.host import TRANSPARENT
 from term_timer_clients.viewer.host import CubeCastHost
 
@@ -1408,6 +1416,81 @@ class OrientationBasisTestCase(unittest.TestCase):
         )
 
 
+class FramingTestCase(unittest.TestCase):
+    """The views the camera stands in, and the mirror over them."""
+
+    def test_a_window_opens_on_the_framing_of_cubing_algs(self) -> None:
+        """The demo view is the framing every window of the library opens on."""
+        self.assertEqual(Framing().rotation, ROTATION)
+        self.assertEqual(Framing.opened_on().rotation, ROTATION)
+
+    def test_the_user_view_takes_the_yaw_out(self) -> None:
+        """The cube is seen by F and U, nothing turning around the vertical."""
+        yaw, pitch, _roll = parse_rotation(
+            Framing.opened_on(USER_VIEW).rotation,
+        )
+
+        self.assertEqual(yaw, 0.0)
+        self.assertGreater(pitch, 0.0)
+
+    def test_the_mirror_is_half_a_turn_of_the_view_it_is_taken_on(
+            self,
+    ) -> None:
+        """Appending the half turn is composing it, whatever the view says."""
+        for view in (DEMO_VIEW, USER_VIEW):
+            with self.subTest(view=view):
+                framing = Framing.opened_on(view)
+                front = parse_rotation(framing.rotation)
+
+                framing.flip()
+                behind = parse_rotation(framing.rotation)
+
+                self.assertAlmostEqual(
+                    behind[0] - front[0], math.pi,
+                )
+                self.assertAlmostEqual(behind[1], front[1])
+
+    def test_the_mirror_comes_back(self) -> None:
+        """The key that passes behind the cube is the one that returns."""
+        framing = Framing.opened_on(mirrored=True)
+
+        self.assertNotEqual(framing.rotation, ROTATION)
+
+        framing.flip()
+
+        self.assertFalse(framing.mirrored)
+        self.assertEqual(framing.rotation, ROTATION)
+
+    def test_the_mirror_writes_the_angle_it_lands_on(self) -> None:
+        """A framing passed behind says where it stands, not what it added."""
+        self.assertEqual(flipped('y45x-34'), 'y225x-34')
+        self.assertEqual(flipped(USER_ROTATION), 'y180x-34')
+        self.assertEqual(flipped('y270x-20'), 'y90x-20')
+
+    def test_a_flipped_framing_is_never_an_empty_one(self) -> None:
+        """A framing with nothing left to say would be the library default."""
+        self.assertEqual(flipped('y180'), 'y0')
+
+    def test_the_mirror_applies_to_either_view(self) -> None:
+        """Watching a back and reframing asks for the back of that framing."""
+        framing = Framing.opened_on(DEMO_VIEW, mirrored=True)
+
+        framing.show(USER_VIEW)
+
+        self.assertTrue(framing.mirrored)
+        self.assertEqual(framing.rotation, flipped(USER_ROTATION))
+
+    def test_a_typed_rotation_is_the_demo_view(self) -> None:
+        """An angle typed by hand stays reachable once it has been left."""
+        framing = Framing.opened_on(USER_VIEW, 'y90x-20')
+
+        self.assertEqual(framing.rotation, USER_ROTATION)
+
+        framing.show(DEMO_VIEW)
+
+        self.assertEqual(framing.rotation, 'y90x-20')
+
+
 class CubeCastHostTestCase(unittest.TestCase):
     """The window, and the title the stream writes in it."""
 
@@ -1519,6 +1602,47 @@ class CubeCastHostTestCase(unittest.TestCase):
 
         self.assertTrue(answered)
         self.viewer.reset_cube.assert_not_called()
+
+    def test_a_view_key_reframes_the_cube(self) -> None:
+        """A view key writes the framing into the viewer and rebuilds it."""
+        glfw = MagicMock()
+        glfw.KEY_1 = ord('1')
+        glfw.KEY_2 = ord('2')
+
+        with patch.dict(sys.modules, {'glfw': glfw}):
+            answered = self.host.on_viewer_key(ord('2'))
+
+        self.assertTrue(answered)
+        self.assertEqual(self.host.framing.view, USER_VIEW)
+        self.assertEqual(self.viewer.rotation, USER_ROTATION)
+        self.viewer.reset_camera.assert_called_once_with()
+
+    def test_the_mirror_key_passes_behind_the_cube(self) -> None:
+        """The third key flips the view the camera already stands in."""
+        glfw = MagicMock()
+        glfw.KEY_3 = ord('3')
+
+        with patch.dict(sys.modules, {'glfw': glfw}):
+            self.host.on_viewer_key(ord('3'))
+
+        self.assertTrue(self.host.framing.mirrored)
+        self.assertEqual(self.viewer.rotation, flipped(ROTATION))
+
+    def test_a_view_key_is_not_played_as_a_move(self) -> None:
+        """A digit reaches the camera and never the cube."""
+        glfw = MagicMock()
+        glfw.KEY_1 = ord('1')
+
+        with patch.dict(sys.modules, {'glfw': glfw}):
+            self.host.on_viewer_key(ord('1'))
+
+        self.viewer.press.assert_not_called()
+
+    def test_shortcuts_name_the_views(self) -> None:
+        """The list written when the window opens holds the three keys."""
+        for key in ('  1  ', '  2  ', '  3  '):
+            with self.subTest(key=key):
+                self.assertIn(key, self.host.shortcuts)
 
     def test_shortcuts_leave_the_moves_out(self) -> None:
         """The list written when the window opens holds no move."""
@@ -2147,3 +2271,48 @@ class MainTestCase(unittest.TestCase):
         self.assertEqual(run_main(host, stream), 0)
 
         stream.stop.assert_called_once_with()
+
+
+class ViewOptionTestCase(unittest.TestCase):
+    """The view a window opens on, and the angle it is written with."""
+
+    def test_build_host_opens_on_the_view_it_was_given(self) -> None:
+        """The view named on the command line is what the window opens on."""
+        options = entry.build_parser({}).parse_args(
+            ['-e', ENDPOINT, '-v', USER_VIEW],
+        )
+
+        host = entry.build_host(options)
+
+        self.assertEqual(host.framing.view, USER_VIEW)
+        self.assertEqual(host.viewer.rotation, USER_ROTATION)
+
+    def test_build_host_opens_behind_the_cube(self) -> None:
+        """A window asked for the mirror opens on the view already flipped."""
+        options = entry.build_parser({}).parse_args(
+            ['-e', ENDPOINT, '-v', USER_VIEW, '--mirror'],
+        )
+
+        host = entry.build_host(options)
+
+        self.assertTrue(host.framing.mirrored)
+        self.assertEqual(host.viewer.rotation, flipped(USER_ROTATION))
+
+    def test_a_typed_rotation_stays_the_view_it_opened_on(self) -> None:
+        """--rotation is the demo view, and the first key comes back to it."""
+        options = entry.build_parser({}).parse_args(
+            ['-e', ENDPOINT, '-r', 'y90x-20', '-v', USER_VIEW],
+        )
+
+        host = entry.build_host(options)
+
+        self.assertEqual(host.viewer.rotation, USER_ROTATION)
+
+        host.framing.show(DEMO_VIEW)
+
+        self.assertEqual(host.framing.rotation, 'y90x-20')
+
+    def test_view_rejects_what_is_not_one(self) -> None:
+        """A view this client does not stand in stops the client."""
+        with self.assertRaises(SystemExit):
+            entry.build_parser({}).parse_args(['-e', ENDPOINT, '-v', 'back'])

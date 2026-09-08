@@ -87,8 +87,8 @@ library opens.
 
 ```
 Usage: cube-cast [-h] [-e ENDPOINT] [-o ORIENTATION] [-p PALETTE] [-m MODE]
-                 [-r ROTATION] [-w WIDTHxHEIGHT] [-b MILLISECONDS]
-                 [-l MILLISECONDS] [-t] [-g] [--no-msaa]
+                 [-r ROTATION] [-v VIEW] [-w WIDTHxHEIGHT] [-b MILLISECONDS]
+                 [-l MILLISECONDS] [--mirror] [-t] [-g] [--no-msaa]
 
 Watch a cube in 3D, from the term-timer event stream.
 
@@ -107,9 +107,13 @@ Options:
   -m MODE, --mode MODE  Show only what a step of the solve is about, e.g. oll.
                         Default: the whole cube.
   -r ROTATION, --rotation ROTATION
-                        Set the angle the camera looks the cube from,
+                        Set the angle the demo view looks the cube from,
                         as AXISDEGREES parts, e.g. y45x-34.
                         Default: the framing of cubing-algs.
+  -v VIEW, --view VIEW  Set the view the window opens on.
+                        demo: the cube seen by three faces at once.
+                        user: the cube seen by its front and top faces.
+                        Default: demo.
   -w WIDTHxHEIGHT, --window-size WIDTHxHEIGHT
                         Set the size of the window.
                         Default: 400x300.
@@ -121,11 +125,14 @@ Options:
                         Set how much of a move is already over when the
                         window hears of it, and starts the turn that far in.
                         Default: 50.
+  --mirror              Look at the cube from behind: the view is seen
+                        from the other side, at the same height.
+                        Default: False.
   -t, --transparent     Lay the cube on the desktop: no background, no window
                         decoration, and floating above everything.
                         Default: False.
   -g, --no-gyroscope    Leave the cube where the camera puts it, deaf to the
-                        gyroscope: the window is framed by --rotation and the
+                        gyroscope: the window is framed by the view and the
                         mouse, and the moves alone come from the cube.
                         Default: False.
   --no-msaa             Draw the cube into the window itself, aliased but with
@@ -140,13 +147,33 @@ a mask over what is drawn, never over what is known: the mask is
 settled once and follows the pieces as they turn, so the cube keeps
 being the one the hardware reports.
 
-`--rotation` says where the camera stands when the window opens, as
-the axis and angle parts `python -m cubing_algs apply --rotation`
-takes: `y45x-34` is the framing of the library, `y90x-20` opens on the
-R face, `y0x0` looks the cube straight in the F face. It frames the
-cube rather than turning it — the cube is turned by the hardware
-alone — and `Space` comes back to it, so a window opened on an angle
-stays on it.
+`--view` says where the camera stands, and the `1` and `2` keys move
+it there without closing the window. **demo** is the three quarter
+view of cubing-algs, the framing an algorithm is read in: three faces
+at once and none of them straight on. **user** takes the yaw out and
+leaves the elevation — F straight ahead, U in perspective above it —
+which is the cube as the hand holding it sees it, and what turns
+around the vertical is then the cube itself, under the gyroscope.
+
+Looking from behind is not a third view but a flag over those two:
+`--mirror` opens there, and `3` passes behind whichever view is being
+watched and comes back. It is a half turn around the vertical at the
+very same height, so the back of the demo view is the opposite corner
+and the back of the user view is the B face straight on. The flag
+stays where it is when `1` or `2` reframes the cube — watching a back
+and reframing is asking for the back of that framing — and `Space`
+comes back to the view being watched, mirror included, rather than to
+the one the window opened on.
+
+`--rotation` is the demo view written by hand, as the axis and angle
+parts `python -m cubing_algs apply --rotation` takes: `y45x-34` is the
+framing of the library, `y90x-20` opens on the R face, `y0x0` looks
+the cube straight in the F face — and `3` passes behind that one too,
+`y90x-20` being watched from `y270x-20`. It replaces the demo view rather than
+standing next to it, so `1` comes back to it once another view has
+been stood in — an angle typed and left behind by the first key
+pressed would be one nothing could ever return to. It frames the cube
+rather than turning it: the cube is turned by the hardware alone.
 
 `--no-gyroscope` leaves the cube where the camera puts it. The
 gyroscope of a cube is the one thing the window shows that no hand
@@ -188,6 +215,9 @@ what only looks at the cube:
 ```
   Drag             Orbit the cube
   Ctrl Drag        Carry the window across the screen
+  1                Frame the cube the way an algorithm is read
+  2                Frame the cube the way the hand holding it sees it
+  3                Pass behind the cube, and come back
   Wheel            Zoom in and out
   Space            Frame the cube again
   Tab              Open the cube up, and put it back together

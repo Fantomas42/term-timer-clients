@@ -268,7 +268,11 @@ Three layers, and the boundaries between them are the point:
   to bring the two back together, so `on_viewer_key()` claims every key
   the window does not answer itself. `VIEWER_SHORTCUTS` is the list
   that says so, written when the window opens through the `shortcuts`
-  field of `GlfwHost`. **Nothing here paints the ground**, and that is
+  field of `GlfwHost`. The three view keys are answered there too,
+  rather than in the viewer: cubing-algs has no notion of a view to
+  stand in, and `reframe()` is the whole of what they do — the framing
+  into `Viewer.rotation`, then `reset_camera()`.
+  **Nothing here paints the ground**, and that is
   the whole of the subject: the window is cleared with the cold slate
   `VIEWER_BACKGROUND` of cubing-algs, and a client setting a ground of
   its own would be one window disagreeing with every other one the
@@ -287,22 +291,55 @@ Three layers, and the boundaries between them are the point:
   waiting client is left showing. Only a transparency actually *granted*
   takes the ground away, and the library default is what a refused one
   falls back on.
-- **`--rotation`** — where the camera stands when the window opens,
-  the framing string of cubing-algs and **not** a cube rotation:
-  `--orientation` translates the moves, this one only moves the eye,
-  and the gyroscope keeps turning the cube under it. It travels to
-  `Viewer.rotation`, which `reset_camera()` reads too, so `Space` comes
-  back to the angle the window opened on rather than to the library
-  default. cubing-algs falls back on that default for a string it
-  cannot read, which would open the very window the option was meant to
-  change and say nothing about it, so `parse_camera_rotation()` refuses
-  one against `ROTATION_PATTERN` instead.
+- **`viewer/framing.py`** — `Framing`, where the camera stands and
+  what the `1`, `2` and `3` keys move it between. Pure: a view name
+  comes in and a rotation string comes out, and the viewer is what
+  builds a camera from it. **Two views and a flag, never three views**
+  — looking from behind is a way of looking at the view one is in
+  rather than a view of its own, so it applies to either of them
+  instead of being written against the one it was thought of on, it
+  survives a change of view, and there is one place saying what
+  passing behind means instead of one per view. `demo` is the framing
+  of cubing-algs, imported as `ROTATION` rather than recopied — a demo
+  view drifting away from the framing it is the demo of is the one
+  thing it may not do — and `user` is that elevation with the yaw
+  taken out, written here because what it names is a way of *holding*
+  a cube, about which a library changing its three quarter view has
+  nothing to say. `flipped()` **adds the half turn to the yaw and
+  writes the framing out again** rather than appending `y180` to it:
+  the parts of a rotation do add up per axis, so appending would frame
+  the very same thing, but what comes out is then a pile of the turns
+  that were asked for — `y45x-34y180` — instead of the angle the
+  camera ends up at. The yaw is always written, the pitch and the roll
+  only when they turn something: every part at zero would be an empty
+  string, and an empty rotation is the library default rather than a
+  cube looked straight in the F face. What comes out is written into
+  `Viewer.rotation` and never into the camera, `reset_camera()`
+  reading it: the view being watched is the view `Space` comes back
+  to, mirror included.
+- **`--view` / `--rotation` / `--mirror`** — where the camera stands
+  when the window opens, and the very same views and flag the keys
+  reach. They are the framing string of cubing-algs and **not** a cube
+  rotation: `--orientation` translates the moves, these only move the
+  eye, and the gyroscope keeps turning the cube under them.
+  `--rotation` **replaces the demo view** rather than standing beside
+  it as a third framing: an angle typed and left behind by the first
+  key pressed would be one nothing could ever return to, so `1` comes
+  back to it, and `3` passes behind it like behind any other. The
+  command line and the keyboard say the same three things because
+  `--mirror` is a flag and not a view — a mirror named among the views
+  would be the mirror of *one* of them, and the other one could never
+  be seen from behind at all. cubing-algs falls back on its default
+  for a string it cannot read, which would open the very window the
+  option was meant to change and say nothing about it, so
+  `parse_camera_rotation()` refuses one against `ROTATION_PATTERN`
+  instead.
 - **`--no-gyroscope`** — a cube deaf to what turns it, and the option
   is *the absence of a tracker* rather than a topic dropped as it
   arrives: `build_host()` hands `None` to `Viewer` and to `CubeCast`
   alike, which is the very state a client that never orients itself is
   already in — `turn_cube()` has nothing to feed a quaternion to, and
-  the window is framed by `--rotation` and the mouse alone. Filtering
+  the window is framed by the view and the mouse alone. Filtering
   it on the wire is what cannot be done and what is not wanted:
   ZeroMQ subscribes by prefix, so dropping one topic of the `cube.`
   plane would mean naming every other one, and a gyroscope that stops

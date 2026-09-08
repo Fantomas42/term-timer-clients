@@ -12,6 +12,9 @@ from cubing_algs.display.gl.renderer import OffscreenTarget
 
 from term_timer_clients.viewer.assembly import Assembly
 from term_timer_clients.viewer.client import CubeCast
+from term_timer_clients.viewer.framing import DEMO_VIEW
+from term_timer_clients.viewer.framing import USER_VIEW
+from term_timer_clients.viewer.framing import Framing
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +42,9 @@ VIEWER_SHORTCUTS = f"""\
 cube-cast
   Drag             Orbit the cube
   Ctrl Drag        Carry the window across the screen
+  1                Frame the cube the way an algorithm is read
+  2                Frame the cube the way the hand holding it sees it
+  3                Pass behind the cube, and come back
 { WINDOW_SHORTCUTS }"""
 
 # The background of a window whose compositor is asked to let the
@@ -93,11 +99,24 @@ class CubeCastHost(GlfwHost):
     a way out of the offscreen detour a transparent window imposes:
     the cube is then drawn into the window itself, aliased but with
     nothing in between.
+
+    ``framing`` is where the camera stands, and the 1, 2 and 3 keys
+    are what move it: a rotation string is hard to type and impossible
+    to guess, and the two framings anybody ever wants - the cube read
+    the way an algorithm is written, and the cube seen the way the
+    hand holding it sees it - are one key each, the third passing
+    behind whichever of them is being watched.
     """
 
     view: CubeCast = field(kw_only=True)
     transparent: bool = False
     msaa: bool = True
+
+    # Where the camera stands, and what the 1, 2 and 3 keys move it
+    # between. The window opens on whatever the viewer was built with,
+    # so a host handed no framing at all is one whose keys frame the
+    # cube the way cubing-algs frames it.
+    framing: Framing = field(default_factory=Framing)
 
     # Redeclared rather than passed in: the keys held back are held back
     # by this class, so the list saying so belongs to it too.
@@ -361,6 +380,18 @@ class CubeCastHost(GlfwHost):
             int(window_y + y - anchor_y),
         )
 
+    def reframe(self) -> None:
+        """
+        Build the camera again, where the framing now has it stand.
+
+        The view is written into the viewer rather than into the
+        camera: ``rotation`` is what ``reset_camera()`` reads, so
+        Space comes back to the view being watched rather than to the
+        one the window happened to open on.
+        """
+        self.viewer.rotation = self.framing.rotation
+        self.viewer.reset_camera()
+
     def on_mouse_button(
             self,
             window: GLFWWindow,
@@ -440,7 +471,9 @@ class CubeCastHost(GlfwHost):
         published either, and the drift it opens is the same one.
 
         What is left is what only looks at the cube: the framing, the
-        exploded view, the axes and the screenshot.
+        exploded view, the axes and the screenshot. The three view
+        keys are of that kind and are answered here rather than in the
+        viewer, cubing-algs having no notion of a view to stand in.
 
         Args:
             key: The glfw code of the key.
@@ -452,7 +485,15 @@ class CubeCastHost(GlfwHost):
         """
         import glfw  # noqa: PLC0415
 
-        if key != glfw.KEY_BACKSPACE:
+        views = {glfw.KEY_1: DEMO_VIEW, glfw.KEY_2: USER_VIEW}
+
+        if key in views:
+            self.framing.show(views[key])
+            self.reframe()
+        elif key == glfw.KEY_3:
+            self.framing.flip()
+            self.reframe()
+        elif key != glfw.KEY_BACKSPACE:
             super().on_viewer_key(key)
 
         return True
