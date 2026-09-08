@@ -1073,32 +1073,52 @@ class CoreTintTestCase(unittest.TestCase):
             DEFAULT_LOOK.core_rim_strength,
         )
 
-    def test_a_waiting_core_is_matte(self) -> None:
-        """A glint on a nearly black ball is all an old rendering was."""
+    def test_a_waiting_core_reads_as_metal(self) -> None:
+        """A bare sphere carries the window alone on a harder spark."""
         dormant = Assembly().tint(DEFAULT_LOOK)
 
-        self.assertLess(
+        self.assertGreater(
             dormant.core_specular_strength,
             DEFAULT_LOOK.core_specular_strength,
         )
-        self.assertLess(
+        self.assertGreater(
             dormant.core_specular_power,
             DEFAULT_LOOK.core_specular_power,
         )
+        self.assertGreater(
+            dormant.core_metalness,
+            DEFAULT_LOOK.core_metalness,
+        )
 
-    def test_the_highlight_comes_back_with_the_link(self) -> None:
-        """The sheen is spent on what is missing, not on the breath."""
+    def test_the_highlight_settles_as_the_link_comes_up(self) -> None:
+        """The spark is spent on what is missing, not on the breath."""
         half = Assembly(glow=0.5, elapsed=PULSE_PERIOD / 2).tint(DEFAULT_LOOK)
 
-        self.assertGreater(
+        self.assertLess(
             half.core_specular_strength,
             Assembly(elapsed=PULSE_PERIOD / 2).tint(
                 DEFAULT_LOOK,
             ).core_specular_strength,
         )
-        self.assertLess(
+        self.assertGreater(
             half.core_specular_strength,
             DEFAULT_LOOK.core_specular_strength,
+        )
+
+    def test_the_metalness_settles_as_the_link_comes_up(self) -> None:
+        """The core is only ever as metal as it is missing a cube."""
+        half = Assembly(glow=0.5).tint(DEFAULT_LOOK).core_metalness
+
+        self.assertGreater(half, DEFAULT_LOOK.core_metalness)
+        self.assertLess(half, Assembly().tint(DEFAULT_LOOK).core_metalness)
+
+    def test_a_connected_core_keeps_its_own_metalness(self) -> None:
+        """Nothing of the dormant material survives a cube standing whole."""
+        self.assertEqual(
+            Assembly(progress=1.0, glow=1.0).tint(
+                DEFAULT_LOOK,
+            ).core_metalness,
+            DEFAULT_LOOK.core_metalness,
         )
 
     def test_the_breath_is_wrapped_on_its_period(self) -> None:

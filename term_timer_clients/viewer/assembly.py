@@ -140,17 +140,24 @@ SPIN_AXIS = Vec3(0.0, 1.0, 0.0)
 PULSE_RIM = 1.0
 PULSE_HALO = 0.3
 
-# What is left of the highlight of the core while nothing is connected,
-# as a share of the strength and of the tightness the look gives it.
-# The shader adds the highlight on top of the color rather than through
-# it, so a spot of lamp on a nearly black ball is the one thing with
-# any strength in it: kept whole it draws the hard, round glint of a
-# rendering of thirty years ago, whatever the color underneath. Taken
-# down and spread out, it becomes the sheen of something matte, and the
-# ball is left to its own shape. Both come back with the link: the look
-# is handed back untouched the moment the core is lit.
-DORMANT_GLOSS = 0.12
-DORMANT_GLOSS_SPREAD = 0.45
+# What the ball reads as while nothing is connected, term for term - a
+# core left on its own is the one thing this window is ever asked to
+# carry alone, where a piece behind a groove never has to. Metal rather
+# than plastic: cubing-algs' own ``core_metalness`` tints the highlight
+# with the color of the ball instead of the lamp's and fades the
+# diffuse term out, so the ambient is left untouched here on purpose -
+# it is shared with the pieces the moment any of them are already
+# flying in, where the core's own knobs are not. Harder and tighter
+# than the connected look, and not dimmer: a flat, matte ball reads as
+# waiting for a rendering to catch up with it, where a harder spark and
+# a narrower rim read as a material of its own. All four settle back to
+# the connected look exactly, the moment the link is up - nothing here
+# is left standing once a cube is actually there to look at.
+DORMANT_SPECULAR_STRENGTH = 0.9
+DORMANT_SPECULAR_POWER = 60.0
+DORMANT_RIM_STRENGTH = 0.9
+DORMANT_RIM_POWER = 1.4
+DORMANT_METALNESS = 0.65
 
 # Seconds the ball core takes to light up once the link is up. Short,
 # and above all its own: the link and the state are two events, and a
@@ -176,26 +183,29 @@ def clamp(value: float) -> float:
     return min(1.0, max(0.0, value))
 
 
-def dimmed(value: float, share: float, missing: float) -> float:
+def dimmed(value: float, dormant: float, missing: float) -> float:
     """
-    Take one term of the light down to what a waiting core wears.
+    Blend one term of the light between its connected value and the
+    one a core with nothing behind it wears.
 
     Weighed by what the core is missing rather than by the breath: a
-    ball on standby is matte for as long as it waits, where the swell
-    is what says it is still waiting. So the term comes back exactly
-    as the core lights up, and a lit one is handed the very light the
-    look came with.
+    ball on standby carries the dormant term for as long as it waits,
+    where the swell is what says it is still waiting. So the term
+    lands exactly on the dormant one when nothing is connected and
+    exactly on the look's own one the moment it is - whichever of the
+    two happens to be the larger, a highlight being as free to grow
+    while waiting as to shrink into it.
 
     Args:
-        value: The term as the look gives it.
-        share: How much of it a core with no cube behind it keeps.
+        value: The term as the look gives it, once connected.
+        dormant: The term a core with no cube behind it wears instead.
         missing: How much of the live core is still to come.
 
     Returns:
-        The term, taken down for the moment.
+        The term, blended for the moment.
 
     """
-    return value * (1.0 - (1.0 - share) * missing)
+    return value + (dormant - value) * missing
 
 
 def shrink(scale: float) -> Mat4:
@@ -716,13 +726,24 @@ class Assembly:
         one is running. It is taken down and never put out: the
         highlight of the shader is added on top of the color, so a
         core painted black would be that one glint and nothing else -
-        the plastic sphere of an old rendering, which is what a
-        dimmed, spread out highlight on a ball with some body left
-        takes the place of. It travels on the link and not with the
-        pieces, so the ball answers the cube connecting rather than
-        the state it takes its time to describe - a core still on
-        standby while the stream has already said there is a cube
-        would have the picture say the opposite of what was published.
+        the plastic sphere of an old rendering, which is what a harder,
+        colder highlight on a ball with some body left takes the place
+        of instead. It travels on the link and not with the pieces, so
+        the ball answers the cube connecting rather than the state it
+        takes its time to describe - a core still on standby while the
+        stream has already said there is a cube would have the picture
+        say the opposite of what was published.
+
+        A core with nothing behind it is drawn as metal rather than
+        plastic - cubing-algs' own ``core_metalness``, which tints the
+        highlight with the color of the ball instead of the lamp's and
+        fades the diffuse term out - and its own highlight and rim are
+        pushed harder and narrower than the connected look ever asks
+        for: a bare sphere carrying the whole of an empty window on its
+        own reads as *something* by the spark sliding on it, where the
+        soft, wide gloss of a running cube would read as one more dull
+        shape in a mostly empty picture. All of it settles down to the
+        connected look exactly, the moment the link is up.
 
         A ball alone in the window breathes on top of that, and the
         breath is spent on the light before it is spent on the hue: the
@@ -733,10 +754,11 @@ class Assembly:
         The rim and nothing else, because it multiplies the color where
         the highlight is added on top of it and added white: a sheen
         swelling over the ball washes it out instead of warming it, so
-        the highlight is taken matte and held there for the whole of
-        the wait. Every half of it is weighed by what is missing of the
-        *core*, so the breath goes out exactly as the color comes in
-        rather than lingering under a ball already lit.
+        the highlight is left to what missing the core alone already
+        gives it, untouched by the breath itself. Every half of the rim
+        is weighed by what is missing of the *core* on top of its own
+        dormant floor, so the breath goes out exactly as the color
+        comes in rather than lingering under a ball already lit.
 
         The lamp walks around the ball on top of all that, which is the
         only spin a sphere of one color has in it: turning the core
@@ -773,17 +795,21 @@ class Assembly:
             light_direction=spun(
                 look.light_direction, self.turned, missing,
             ),
-            core_rim_strength=look.core_rim_strength * (
-                1.0 + PULSE_RIM * waiting
-            ),
-            core_rim_power=look.core_rim_power * (
-                1.0 - PULSE_HALO * waiting
-            ),
+            core_rim_strength=dimmed(
+                look.core_rim_strength, DORMANT_RIM_STRENGTH, missing,
+            ) * (1.0 + PULSE_RIM * waiting),
+            core_rim_power=dimmed(
+                look.core_rim_power, DORMANT_RIM_POWER, missing,
+            ) * (1.0 - PULSE_HALO * waiting),
             core_specular_strength=dimmed(
-                look.core_specular_strength, DORMANT_GLOSS, missing,
+                look.core_specular_strength, DORMANT_SPECULAR_STRENGTH,
+                missing,
             ),
             core_specular_power=dimmed(
-                look.core_specular_power, DORMANT_GLOSS_SPREAD, missing,
+                look.core_specular_power, DORMANT_SPECULAR_POWER, missing,
+            ),
+            core_metalness=dimmed(
+                look.core_metalness, DORMANT_METALNESS, missing,
             ),
         )
 
