@@ -26,6 +26,7 @@ def envelope(
         data: dict[str, Any] | None = None,
         session_id: str = 'a3f1c8d2',
         version: int = PROTOCOL_VERSION,
+        source: str = 'solve',
 ) -> dict[str, Any]:
     """
     Build an envelope as the publisher writes it.
@@ -35,6 +36,7 @@ def envelope(
         data: Payload of the message.
         session_id: Identifier of the emitting session.
         version: Version of the protocol spoken.
+        source: Command publishing the message.
 
     Returns:
         The envelope, ready to be dispatched.
@@ -44,7 +46,7 @@ def envelope(
         'v': version,
         'seq': 0,
         'ts': 1755500000.0,
-        'src': 'solve',
+        'src': source,
         'sid': session_id,
         'topic': topic,
         'data': data if data is not None else {},

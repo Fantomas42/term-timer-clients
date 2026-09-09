@@ -44,7 +44,9 @@ from term_timer_clients.tray.bus import open_bus
 from term_timer_clients.tray.bus import publish
 from term_timer_clients.tray.bus import register
 from term_timer_clients.tray.client import HIDE_LABEL
+from term_timer_clients.tray.client import QUIT_ITEM
 from term_timer_clients.tray.client import SHOW_LABEL
+from term_timer_clients.tray.client import SOURCE_ITEM
 from term_timer_clients.tray.client import STATUS_ITEM
 from term_timer_clients.tray.client import TOGGLE_ITEM
 from term_timer_clients.tray.client import TRAY_CONNECTED
@@ -78,10 +80,10 @@ PROPERTIES_INTERFACE = 'org.freedesktop.DBus.Properties'
 
 GET_MEMBER = 'Get'
 
-# How many lines the menu offers, and where the one that is clicked
-# stands. The suite asserts on the layout as a shell reads it, so it
-# counts what a shell would draw.
-MENU_LINES = 5
+# How many lines the menu offers with no cube connected, the footer
+# of the state and the source left out. The suite asserts on the
+# layout as a shell reads it, so it counts what a shell would draw.
+MENU_LINES = 3
 
 REGISTER_MEMBER = 'RegisterStatusNotifierItem'
 
@@ -537,17 +539,33 @@ class MenuLayoutTestCase(ItemTestCase):
         """A shell draws the labels and nothing else."""
         children = await self.layout()
 
-        _identifier, properties, _grandchildren = children[2].value
+        _identifier, properties, _grandchildren = children[0].value
 
         self.assertEqual(properties[LABEL_PROPERTY].value, SHOW_LABEL)
 
-    async def test_the_state_of_the_cube_heads_the_menu(self) -> None:
-        """What an icon has nowhere else to say."""
+    async def test_a_disconnected_cube_has_no_footer(self) -> None:
+        """Nothing to read is nothing sent over the bus either."""
         children = await self.layout()
 
-        _identifier, properties, _grandchildren = children[0].value
+        identifiers = [child.value[0] for child in children]
 
-        self.assertEqual(properties[LABEL_PROPERTY].value, TRAY_OFFLINE)
+        self.assertNotIn(STATUS_ITEM, identifiers)
+        self.assertNotIn(SOURCE_ITEM, identifiers)
+
+    async def test_a_connected_cube_trails_the_menu_with_a_footer(
+            self,
+    ) -> None:
+        """What an icon has nowhere else to say, read last."""
+        self.tray.dispatch(envelope('cube.move', {'move': 'R'}))
+
+        children = await self.layout()
+        identifiers = [child.value[0] for child in children]
+
+        self.assertEqual(identifiers[-1], QUIT_ITEM)
+        self.assertEqual(identifiers[-4:-2], [STATUS_ITEM, SOURCE_ITEM])
+
+        _identifier, properties, _grandchildren = children[-4].value
+        self.assertEqual(properties[LABEL_PROPERTY].value, TRAY_CONNECTED)
 
     async def test_the_menu_is_read_again_before_it_is_drawn(self) -> None:
         """What the lines say depends on a window that may have closed."""
@@ -580,7 +598,7 @@ class MenuLayoutTestCase(ItemTestCase):
         """A line is asked about what it has, and what it has not."""
         body = await self.ask(
             MENU_PATH, MENU_INTERFACE, 'GetProperty', 'is',
-            [STATUS_ITEM, TYPE_PROPERTY],
+            [TOGGLE_ITEM, TYPE_PROPERTY],
         )
 
         self.assertEqual(body[0].value, '')
@@ -723,6 +741,7 @@ class SignalTestCase(ItemTestCase):
         """
         caught = await self.catch(MENU_PATH, MENU_INTERFACE)
 
+        self.tray.dispatch(envelope('cube.move', {'move': 'R'}))
         self.tray.toggle()
         self.menu.refresh()
 
@@ -736,7 +755,7 @@ class SignalTestCase(ItemTestCase):
         }
 
         self.assertEqual(said[TOGGLE_ITEM], HIDE_LABEL)
-        self.assertEqual(said[STATUS_ITEM], TRAY_OFFLINE)
+        self.assertEqual(said[STATUS_ITEM], TRAY_CONNECTED)
 
 
 class AskingTestCase(ItemTestCase):

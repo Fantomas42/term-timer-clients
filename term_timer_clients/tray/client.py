@@ -24,21 +24,28 @@ TRAY_CONNECTED = 'Cube connected'
 
 TRAY_OFFLINE = 'No cube connected'
 
+# What is said of a stream nothing has been heard from yet: the source
+# is carried by every envelope, so this is a real absence rather than
+# a fallback for one that failed to say it.
+TRAY_NO_SOURCE = 'No source yet'
+
 # What the menu offers, in the order it offers it. The identifiers are
 # what a click comes back as, so they are written down rather than
 # counted: an entry added tomorrow must not turn Quit into Show. The
 # separators are numbered like the rest and **never left at zero**,
 # which is the identifier of the root of the menu itself: a line
 # sharing it is a line a shell is free to take for the whole menu.
-STATUS_ITEM = 1
+TOGGLE_ITEM = 1
 
 FIRST_RULE_ITEM = 2
 
-TOGGLE_ITEM = 3
+STATUS_ITEM = 3
 
-SECOND_RULE_ITEM = 4
+SOURCE_ITEM = 4
 
-QUIT_ITEM = 5
+SECOND_RULE_ITEM = 5
+
+QUIT_ITEM = 6
 
 SHOW_LABEL = 'Show the cube'
 
@@ -66,7 +73,7 @@ class MenuEntry:
 
 class CubeTray(CubeLink):
     """
-    The cube as a bar shows it: an icon, a tooltip and three lines.
+    The cube as a bar shows it: an icon, a tooltip and a menu.
 
     What it holds of the stream is the link every client showing a cube
     reads, and nothing else: an icon says whether there is a cube, and
@@ -115,27 +122,46 @@ class CubeTray(CubeLink):
         """
         Write out the menu the icon drops on a right click.
 
-        The state comes first and answers no click: a menu is opened to
-        read as much as to act, and what the window would have shown in
-        its bar is what an icon has nowhere else to say.
+        The state and the source are a footer, answering no click: what
+        the window would have shown in its bar is what an icon has
+        nowhere else to say, but it is read far less often than the
+        gesture above it is clicked, so it trails the menu instead of
+        opening it. The source is its own line rather than joining
+        ``label``, which a prefixed command such as ``term-timer
+        train`` would otherwise stretch past what a bar reads
+        comfortably. Neither is shown at all when there is no cube to
+        report on: a footer saying ``No cube connected`` would be one
+        more thing to read for what the icon already says by itself.
 
         Returns:
             The lines of the menu, in the order they are shown.
 
         """
-        return [
-            MenuEntry(STATUS_ITEM, self.label, enabled=False),
-            MenuEntry(FIRST_RULE_ITEM, '', separator=True),
+        entries = [
             MenuEntry(
                 TOGGLE_ITEM,
                 HIDE_LABEL if self.popup.shown else SHOW_LABEL,
             ),
-            MenuEntry(SECOND_RULE_ITEM, '', separator=True),
-            MenuEntry(QUIT_ITEM, QUIT_LABEL),
+            MenuEntry(FIRST_RULE_ITEM, '', separator=True),
         ]
 
+        if self.connected:
+            entries += [
+                MenuEntry(STATUS_ITEM, self.label, enabled=False),
+                MenuEntry(
+                    SOURCE_ITEM,
+                    self.source or TRAY_NO_SOURCE,
+                    enabled=False,
+                ),
+                MenuEntry(SECOND_RULE_ITEM, '', separator=True),
+            ]
+
+        entries.append(MenuEntry(QUIT_ITEM, QUIT_LABEL))
+
+        return entries
+
     @property
-    def state(self) -> tuple[bool, str, bool]:
+    def state(self) -> tuple[bool, str, str, bool]:
         """
         Tell everything the bar is showing, in one comparable thing.
 
@@ -145,11 +171,11 @@ class CubeTray(CubeLink):
         picture that says the same thing.
 
         Returns:
-            What the icon wears, what it says, and whether the window
-            is up.
+            What the icon wears, what it says, what publishes it, and
+            whether the window is up.
 
         """
-        return self.connected, self.label, self.popup.shown
+        return self.connected, self.label, self.source, self.popup.shown
 
     def toggle(self) -> None:
         """Show the window under the icon, or take away the one that is up."""

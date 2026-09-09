@@ -28,12 +28,16 @@ from term_timer_clients.tray.cast import TRANSPARENT_FLAG
 from term_timer_clients.tray.cast import Popup
 from term_timer_clients.tray.cast import cast_command
 from term_timer_clients.tray.cast import cast_program
+from term_timer_clients.tray.client import FIRST_RULE_ITEM
 from term_timer_clients.tray.client import HIDE_LABEL
 from term_timer_clients.tray.client import QUIT_ITEM
+from term_timer_clients.tray.client import SECOND_RULE_ITEM
 from term_timer_clients.tray.client import SHOW_LABEL
+from term_timer_clients.tray.client import SOURCE_ITEM
 from term_timer_clients.tray.client import STATUS_ITEM
 from term_timer_clients.tray.client import TOGGLE_ITEM
 from term_timer_clients.tray.client import TRAY_CONNECTED
+from term_timer_clients.tray.client import TRAY_NO_SOURCE
 from term_timer_clients.tray.client import TRAY_OFFLINE
 from term_timer_clients.tray.client import CubeTray
 from term_timer_clients.tray.icon import FLAT_SHARE
@@ -595,13 +599,50 @@ class TrayMenuTestCase(unittest.TestCase):
         """Zero is the menu itself, and a shell reads it as such."""
         self.assertNotIn(0, [entry.identifier for entry in self.tray.entries])
 
-    def test_the_state_of_the_cube_comes_first(self) -> None:
+    def test_a_disconnected_cube_has_no_footer(self) -> None:
+        """Nothing to read is nothing shown, not even the words for it."""
+        identifiers = [entry.identifier for entry in self.tray.entries]
+
+        self.assertNotIn(STATUS_ITEM, identifiers)
+        self.assertNotIn(SOURCE_ITEM, identifiers)
+        self.assertNotIn(SECOND_RULE_ITEM, identifiers)
+
+    def test_a_connected_cube_gets_a_footer(self) -> None:
         """A menu is opened to read as much as to act."""
+        self.tray.dispatch(
+            envelope('cube.move', {'move': 'R'}, source='term-timer train'),
+        )
+
+        entries = {entry.identifier: entry for entry in self.tray.entries}
+
+        self.assertEqual(entries[STATUS_ITEM].label, TRAY_CONNECTED)
+        self.assertFalse(entries[STATUS_ITEM].enabled)
+        self.assertEqual(entries[SOURCE_ITEM].label, 'term-timer train')
+        self.assertFalse(entries[SOURCE_ITEM].enabled)
+
+    def test_a_source_nothing_ever_named_falls_back(self) -> None:
+        """Every envelope carries a source, but a footer still needs one."""
+        self.tray.connected = True
+
+        entries = {entry.identifier: entry for entry in self.tray.entries}
+
+        self.assertEqual(entries[SOURCE_ITEM].label, TRAY_NO_SOURCE)
+
+    def test_the_footer_trails_the_menu(self) -> None:
+        """The state and the source are read last, not first."""
+        self.tray.dispatch(envelope('cube.move', {'move': 'R'}))
+
+        identifiers = [entry.identifier for entry in self.tray.entries]
+
+        self.assertEqual(identifiers[-1], QUIT_ITEM)
+        self.assertEqual(identifiers[-2], SECOND_RULE_ITEM)
+        self.assertEqual(identifiers[-4:-2], [STATUS_ITEM, SOURCE_ITEM])
+
+    def test_the_gesture_comes_first(self) -> None:
+        """A menu is opened to act as much as to read."""
         first = self.tray.entries[0]
 
-        self.assertEqual(first.identifier, STATUS_ITEM)
-        self.assertEqual(first.label, TRAY_OFFLINE)
-        self.assertFalse(first.enabled)
+        self.assertEqual(first.identifier, TOGGLE_ITEM)
 
     def test_the_gesture_says_what_it_will_do(self) -> None:
         """The same line shows the window and hides it."""
@@ -662,6 +703,17 @@ class TrayStateTestCase(unittest.TestCase):
 
         self.assertEqual(self.tray.state, before)
 
+    def test_a_new_source_moves_the_bar(self) -> None:
+        """The command publishing is part of what the bar shows."""
+        self.tray.dispatch(envelope('cube.move', {'move': 'R'}))
+        before = self.tray.state
+
+        self.tray.dispatch(
+            envelope('cube.move', {'move': 'R'}, source='train'),
+        )
+
+        self.assertNotEqual(self.tray.state, before)
+
     def test_a_window_opening_moves_the_bar(self) -> None:
         """The menu offers to hide what is up."""
         before = self.tray.state
@@ -692,12 +744,16 @@ class MenuPropertiesTestCase(unittest.TestCase):
     """A line of the menu, as the protocol carries it."""
 
     def setUp(self) -> None:
-        """Wire a tray on a window that opens nothing."""
+        """Wire a tray connected to a cube, on a window that opens nothing."""
         self.tray = CubeTray(StubPopup())
+        self.tray.dispatch(envelope('cube.move', {'move': 'R'}))
+        self.entries = {
+            entry.identifier: entry for entry in self.tray.entries
+        }
 
     def test_a_separator_is_a_rule_and_nothing_else(self) -> None:
         """A rule carries no label, and a shell draws it as a line."""
-        properties = entry_properties(self.tray.entries[1])
+        properties = entry_properties(self.entries[FIRST_RULE_ITEM])
 
         self.assertEqual(list(properties), [TYPE_PROPERTY])
         self.assertEqual(properties[TYPE_PROPERTY].value, SEPARATOR_TYPE)
@@ -706,14 +762,14 @@ class MenuPropertiesTestCase(unittest.TestCase):
             self,
     ) -> None:
         """The whole of what this menu ever offers."""
-        properties = entry_properties(self.tray.entries[0])
+        properties = entry_properties(self.entries[STATUS_ITEM])
 
-        self.assertEqual(properties[LABEL_PROPERTY].value, TRAY_OFFLINE)
+        self.assertEqual(properties[LABEL_PROPERTY].value, TRAY_CONNECTED)
         self.assertNotIn(TYPE_PROPERTY, properties)
 
     def test_only_what_was_asked_for_is_handed_over(self) -> None:
         """A shell asking for one property is given one."""
-        properties = entry_properties(self.tray.entries[0])
+        properties = entry_properties(self.entries[STATUS_ITEM])
 
         self.assertEqual(
             list(selected(properties, [LABEL_PROPERTY])),
@@ -722,7 +778,7 @@ class MenuPropertiesTestCase(unittest.TestCase):
 
     def test_asking_for_nothing_asks_for_all_of_it(self) -> None:
         """An empty list is how the protocol spells everything."""
-        properties = entry_properties(self.tray.entries[0])
+        properties = entry_properties(self.entries[STATUS_ITEM])
 
         self.assertEqual(selected(properties, []), properties)
 

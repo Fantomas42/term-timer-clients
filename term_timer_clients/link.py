@@ -59,6 +59,7 @@ class CubeLink:
     def __init__(self) -> None:
         """Start on a stream that has said nothing yet."""
         self.session_id = ''
+        self.source = ''
         self.hardware = ''
         self.battery = ''
         self.connected = False
@@ -119,6 +120,8 @@ class CubeLink:
         session_id = str(message.get('sid', ''))
         if session_id != self.session_id:
             self.restart(session_id)
+
+        self.source = str(message.get('src', ''))
 
         topic = str(message.get('topic', ''))
 

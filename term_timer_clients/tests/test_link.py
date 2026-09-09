@@ -98,6 +98,53 @@ class SessionTestCase(LinkTestCase):
         self.assertEqual(self.link.hardware, '')
 
 
+class SourceTestCase(LinkTestCase):
+    """What command is publishing the stream."""
+
+    def test_a_stream_that_said_nothing_names_no_source(self) -> None:
+        """A client that has heard nothing has heard of no command."""
+        self.assertEqual(self.link.source, '')
+
+    def test_the_source_is_followed(self) -> None:
+        """The command publishing the stream is remembered."""
+        self.link.dispatch(
+            envelope('cube.move', {'move': 'R'}, source='train'),
+        )
+
+        self.assertEqual(self.link.source, 'train')
+
+    def test_the_source_survives_a_link_that_drops(self) -> None:
+        """A command does not stop publishing just because the cube left."""
+        self.link.dispatch(
+            envelope('cube.move', {'move': 'R'}, source='train'),
+        )
+        self.link.dispatch(
+            envelope(
+                'cube.link',
+                {'connected': False, 'reason': 'lost'},
+                source='train',
+            ),
+        )
+
+        self.assertEqual(self.link.source, 'train')
+
+    def test_a_new_session_is_a_new_source(self) -> None:
+        """A publisher that restarted may not be the same command."""
+        self.link.dispatch(
+            envelope('cube.move', {'move': 'R'}, source='train'),
+        )
+        self.link.dispatch(
+            envelope(
+                'cube.move',
+                {'move': 'R'},
+                session_id='ffffffff',
+                source='solve',
+            ),
+        )
+
+        self.assertEqual(self.link.source, 'solve')
+
+
 class PresenceTestCase(LinkTestCase):
     """Whether there is a cube on the other end of the stream."""
 
