@@ -13,13 +13,9 @@ from cubing_algs.parsing import parse_moves
 from cubing_algs.transform.translate import translate_moves
 from cubing_algs.vcube import VCube
 
-from term_timer_clients.protocol import CUBE_PREFIX
-from term_timer_clients.protocol import PROTOCOL_VERSION
-from term_timer_clients.protocol import SESSION_END_TOPIC
+from term_timer_clients.link import CubeLink
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
-
     from cubing_algs.algorithm import Algorithm
 
 logger = logging.getLogger(__name__)
@@ -30,13 +26,8 @@ WINDOW_TITLE = 'Cubecast'
 WINDOW_SEPARATOR = ' · '
 WINDOW_OFFLINE = 'offline'
 
-# The one topic of the cube plane that is not the cube talking: it is
-# published by term-timer about the cube, and says so even - and above
-# all - when the cube says nothing at all any more.
-LINK_TOPIC = 'cube.link'
 
-
-class CubeCast:
+class CubeCast(CubeLink):
     """
     What the event stream does to the viewer, topic by topic.
 
@@ -49,9 +40,11 @@ class CubeCast:
     where it would already stand rather than from zero. ``MoveClock``
     is what reads that age.
 
-    The envelope is read before its payload: a session identifier that
-    changes means term-timer restarted, and everything told before
-    belongs to a cube that is no longer the one talking.
+    What is read before the payload - the version of the protocol, the
+    session talking, and whether there is a cube at all - is the
+    ``CubeLink`` every client showing a cube is built on: this one adds
+    the topics a window has a use for, and what a cube that goes away
+    takes down with it.
     """
 
     def __init__(
@@ -75,6 +68,8 @@ class CubeCast:
                 being what argues with its lead.
 
         """
+        super().__init__()
+
         self.viewer = viewer
         self.tracker = tracker
         self.orientation = orientation
@@ -87,25 +82,18 @@ class CubeCast:
         )
         self.translator = translate_moves(self.orientation_moves)
 
-        self.session_id = ''
-        self.hardware = ''
-        self.battery = ''
-        self.connected = False
         self.described = False
-        # Starts on the version this viewer speaks, so that a foreign
-        # stream is reported once and not on every message it sends
-        self.version_seen: Any = PROTOCOL_VERSION
 
-        self.handlers: dict[str, Callable[[dict[str, Any]], None]] = {
+        # Added to the topics the link already answers rather than
+        # written next to them: what says there is a cube is the same
+        # question in every client, and what is done with a move is the
+        # business of the one holding a viewer.
+        self.handlers.update({
             'cube.facelets': self.show_facelets,
             'cube.move': self.play_move,
             'cube.history': self.play_move,
             'cube.gyro': self.turn_cube,
-            'cube.hardware': self.name_cube,
-            'cube.battery': self.charge_cube,
-            LINK_TOPIC: self.link_cube,
-            SESSION_END_TOPIC: self.end_session,
-        }
+        })
 
     @property
     def present(self) -> bool:
@@ -142,11 +130,7 @@ class CubeCast:
             anything about itself.
 
         """
-        parts = [
-            part
-            for part in (self.hardware, self.battery)
-            if part
-        ]
+        parts = self.parts
 
         if not self.connected:
             parts.append(WINDOW_OFFLINE)
@@ -166,15 +150,7 @@ class CubeCast:
             session_id: Identifier of the session now talking.
 
         """
-        if self.session_id:
-            logger.info('Following a new session, starting over')
-
-        self.session_id = session_id
-        self.hardware = ''
-        self.battery = ''
-        self.connected = False
-        self.described = False
-        self.clock.reset()
+        super().restart(session_id)
 
         if self.tracker is not None:
             self.tracker.reset()
@@ -196,45 +172,6 @@ class CubeCast:
             return cube
 
         return cube.oriented_copy(self.orientation, full=True)
-
-    def dispatch(self, message: dict[str, Any]) -> None:
-        """
-        Act on one envelope of the stream.
-
-        Args:
-            message: The envelope, as the publisher wrote it.
-
-        """
-        version = message.get('v')
-        if version != PROTOCOL_VERSION:
-            if version != self.version_seen:
-                logger.warning(
-                    'Ignoring a stream speaking protocol %s, '
-                    'this viewer speaks %s',
-                    version, PROTOCOL_VERSION,
-                )
-                self.version_seen = version
-            return
-
-        session_id = str(message.get('sid', ''))
-        if session_id != self.session_id:
-            self.restart(session_id)
-
-        topic = str(message.get('topic', ''))
-
-        # A cube announces its departure and never its arrival, and a
-        # client opened in the middle of a session has heard neither:
-        # the cube talking at all is what says it is there, and the
-        # link topic is the only one that ever says it is gone.
-        if topic.startswith(CUBE_PREFIX) and topic != LINK_TOPIC:
-            self.connected = True
-
-        handler = self.handlers.get(topic)
-        if handler is None:
-            return
-
-        data = message.get('data')
-        handler(data if isinstance(data, dict) else {})
 
     def show_facelets(self, data: dict[str, Any]) -> None:
         """
@@ -367,100 +304,22 @@ class CubeCast:
         except (KeyError, TypeError, ValueError) as error:
             logger.debug('Cannot read a quaternion: %s', error)
 
-    def name_cube(self, data: dict[str, Any]) -> None:
-        """
-        Remember how the cube calls itself, for the title.
-
-        Args:
-            data: Payload of a ``cube.hardware`` message.
-
-        """
-        name = data.get('hardware_name')
-
-        if isinstance(name, str) and name:
-            self.hardware = name
-
-    def charge_cube(self, data: dict[str, Any]) -> None:
-        """
-        Remember what the battery of the cube is at, for the title.
-
-        Args:
-            data: Payload of a ``cube.battery`` message.
-
-        """
-        level = data.get('level')
-
-        if isinstance(level, int):
-            self.battery = f'{ level }%'
-
-    def link_cube(self, data: dict[str, Any]) -> None:
-        """
-        Follow the link with the cube, without ever closing the window.
-
-        A cube that goes away takes its pieces down with it and leaves
-        the core alone, the state it left in kept underneath: it is the
-        very state the next connection starts from, and a window that
-        closed itself would take the session with it.
-
-        What is described goes with the link, and what a cube that
-        comes back has to say again is what ``unlink()`` explains.
-
-        Args:
-            data: Payload of a ``cube.link`` message.
-
-        """
-        if data.get('connected', True):
-            self.connected = True
-            return
-
-        self.unlink()
-
-    def end_session(self, data: dict[str, Any]) -> None:
-        """
-        Take the cube down when the publisher says its last word.
-
-        Nothing of the session follows this message, so the cube it
-        was describing is gone whatever ended it: a stream that is over
-        publishes no state and no move, and a cube nobody publishes any
-        more is a cube nobody is connected to. It is the picture a link
-        that drops already paints, and the reason is only ever logged -
-        a session closed, interrupted or carried away by an error
-        leaves the very same window behind.
-
-        The window stays open all the same, as it does for a cube that
-        left: closing it would take the session with it, and a
-        publisher that comes back - `interrupted` and `crashed` are
-        sessions that may well - finds somewhere to be shown again.
-
-        Args:
-            data: Payload of a ``session.end`` message.
-
-        """
-        reason = data.get('reason')
-
-        logger.info('End of the session: %s', reason or 'no reason given')
-
-        self.unlink()
-
     def unlink(self) -> None:
         """
-        Let the cube go, and what it said of itself with it.
+        Let the cube go, and what a window held of it with it.
 
         A state belongs to the connection it was published in: a cube
         that comes back describes itself again, so its pieces wait for
         that state rather than gathering on the colors of a link that
         is no longer up. What it said of its name and its charge goes
-        the same way, and for the same reason: the title is what a
-        cube called itself over a link that is no longer up, and a
-        cube coming back may not even be the one that left.
+        the same way, and for the same reason, which is why the link
+        lets them go on its own.
 
-        The reading of its clock goes the same way, and for the same
-        reason: the counter of a cube runs whether or not anybody
-        listens, and the cube coming back may not even be the one that
-        left.
+        The reading of its clock goes with them: the counter of a cube
+        runs whether or not anybody listens, and the cube coming back
+        may not even be the one that left.
         """
-        self.connected = False
+        super().unlink()
+
         self.described = False
-        self.hardware = ''
-        self.battery = ''
         self.clock.reset()

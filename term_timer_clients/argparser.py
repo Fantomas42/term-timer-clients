@@ -8,6 +8,9 @@ from term_timer_clients.protocol import parse_endpoint
 
 LOG_FORMAT = '%(levelname)s: %(message)s'
 
+# What separates the two halves of a size, as every client writes it.
+SIZE_SEPARATOR = 'x'
+
 
 def parse_stream_endpoint(value: str) -> str:
     """
@@ -39,6 +42,53 @@ def parse_stream_endpoint(value: str) -> str:
         raise ArgumentTypeError(msg)
 
     return endpoint
+
+
+def parse_size(value: str) -> tuple[int, int]:
+    """
+    Read the size of a window a ``WIDTHxHEIGHT`` argument names.
+
+    Args:
+        value: The argument, as it was typed.
+
+    Returns:
+        The width and the height, in pixels.
+
+    Raises:
+        ArgumentTypeError: When the argument names no size.
+
+    """
+    width, separator, height = value.lower().partition(SIZE_SEPARATOR)
+
+    if not separator or not width.isdigit() or not height.isdigit():
+        msg = (
+            f'"{ value }" is not a size, '
+            f'expected WIDTH{ SIZE_SEPARATOR }HEIGHT'
+        )
+        raise ArgumentTypeError(msg)
+
+    return int(width), int(height)
+
+
+def write_size(size: tuple[int, int]) -> str:
+    """
+    Write a size out the way a command line takes it.
+
+    Next to what reads one, and for that reason: a client handing a
+    size to another client writes what that one reads, and the two
+    halves of one notation drifting apart is exactly what a shared
+    module is for.
+
+    Args:
+        size: The width and the height, in pixels.
+
+    Returns:
+        The size, as it would have been typed.
+
+    """
+    width, height = size
+
+    return f'{ width }{ SIZE_SEPARATOR }{ height }'
 
 
 class ArgumentParser(argparse.ArgumentParser):

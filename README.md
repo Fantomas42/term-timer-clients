@@ -17,6 +17,9 @@ Living here today:
   time in a window of its own.
 - **`tt-tail`**, the stream itself, read out loud in a terminal: one
   block per message, of both planes, formatted and lightly colored.
+- **`cube-tray`**, an icon in the bar of the desktop saying whether a
+  cube is connected, and opening a small `cube-cast` over the desktop
+  when it is clicked.
 
 ## Installation
 
@@ -29,6 +32,13 @@ which come with it. `tt-tail` needs none of them, and draws with the
 escape sequences of the terminal alone.
 
 [ca]: https://github.com/Fantomas42/cubing-algs
+
+`cube-tray` talks to the desktop over D-Bus, which is one more
+dependency and it is optional:
+
+```bash
+pip install .[tray]
+```
 
 ## cube-cast
 
@@ -361,6 +371,52 @@ The colors go out on their own when the output is not a terminal, and
 nothing else. Every block is flushed as it is written: a tail left to
 its own buffering is a tail that says nothing for pages at a time.
 
+## cube-tray
+
+An icon in the bar rather than a window: it says whether a cube is
+connected, and opens a small `cube-cast` laid over the desktop, which
+the same gesture closes.
+
+```bash
+cube-tray
+```
+
+It reads its endpoint where the other two read theirs. Everything typed
+after `--` is handed to the window as it stands, so the cube is argued
+with where it is documented:
+
+```bash
+cube-tray -w 320x320 -- --palette rgb --view user --no-gyroscope
+```
+
+The icon is a cube drawn in code, in the colors of a cube while one is
+connected and in greys while none is. Hovering it names the cube and
+its charge, the way the window writes them in its bar.
+
+Which gesture opens the window is up to the desktop, and GNOME has
+opinions: **a plain left click drops the menu** — its extension does
+that for every indicator carrying one, and no property changes it — so
+the menu is where the cube is shown and hidden, on its middle line.
+A **double click** opens it directly, and so does the **middle
+button**. The menu holds the same three things either way: what the
+cube is, showing or hiding it, and quitting.
+
+The window it opens is `cube-cast --transparent`: no decoration, no
+background and floating above everything. **Where it opens is up to the
+compositor** — the tray protocol never tells anybody where a shell drew
+its icons, so a window cannot be aimed under one. `Ctrl` and a drag
+carry it wherever it suits, and `Q` or `Escape` close it, which the
+icon notices.
+
+It needs a system tray to register with, which not every desktop has:
+on GNOME that is the AppIndicator extension, shipped and enabled on
+Ubuntu. Without one, the client says so and stops rather than running
+with nothing to show.
+
+```
+Usage: cube-tray [-h] [-e ENDPOINT] [-w WIDTHxHEIGHT] [-- ARGUMENTS ...]
+```
+
 ## Writing another client
 
 Everything a client needs is in [PROTOCOL.md](PROTOCOL.md), and a
@@ -369,7 +425,10 @@ a WebSocket overlay, a script announcing personal bests.
 `term_timer_clients/protocol.py` holds what they share — the envelope,
 the endpoints, and a subscription read in a thread — and
 `term_timer_clients/config.py` reads the configuration of term-timer,
-so that a client is configured where the session is.
+so that a client is configured where the session is. A client that
+shows a cube also has `term_timer_clients/link.py`, which answers
+whether there is one at all: `cube-cast` and `cube-tray` are both
+built on it, and neither reads the link its own way.
 
 ## Development
 
@@ -383,4 +442,7 @@ pytest term_timer_clients --cov=term_timer_clients
 
 The suite needs neither a GPU, a cube nor a terminal: it plays recorded
 captures into a mocked viewer and into a reader writing to a list, and
-real sockets on a real thread for the stream.
+real sockets on a real thread for the stream. The tray is read back the
+way a desktop reads it, on a `dbus-daemon` started for the suite and
+torn down with it — never on the bus of the session, where an icon
+registered and then taken away leaves the shell waiting on it.

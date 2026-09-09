@@ -61,6 +61,24 @@ Three layers, and the boundaries between them are the point:
   handed the configuration rather than reading it, so a parser built on
   an empty one is the client with nothing configured anywhere — which
   is what the tests are given.
+- **`link.py`** — `CubeLink`, what the stream says of the cube before
+  anything shows it, and the base every client showing one is built
+  on. Three questions are answered before a picture is: whether the
+  stream is one this client can read at all, whether it is still the
+  same session talking, and whether there is a cube on the other end.
+  The answers are the same for a window and for an icon in a bar, so
+  they live here rather than in either — **two copies of them would be
+  two answers the day a topic is renamed**, which is the very reason
+  the captures of the suite are read in one place. What it holds is the
+  link and what the cube said of itself over it: `connected`,
+  `hardware`, `battery`, and the `parts` whoever shows them makes a
+  sentence of — a window writes them in its bar and an icon in its
+  tooltip, and neither spelling is the business of the stream. It is
+  written to be subclassed: `handlers` is the dict a consumer adds its
+  own topics to, and `restart()` and `unlink()` are what it extends to
+  throw away what it alone holds of a cube that is gone. `CubeCast` is
+  exactly that — the topics a window has a use for, added to the ones
+  the link already answers.
 - **`viewer/client.py`** — `CubeCast`, the whole of `cube-cast`, and it
   touches neither a socket nor a window. An envelope comes in and a
   viewer method is called: topics are dispatched through a
@@ -272,6 +290,73 @@ Three layers, and the boundaries between them are the point:
   asserts on bare text; wrapping is measured on the bare text and the
   color worn by each piece afterwards, an escape being counted as a
   column by anything that counts characters.
+- **`tray/`** — `cube-tray`, the cube in the bar of the desktop, and
+  **two processes rather than one**: the icon holds no cube and draws
+  none, a click on it opens a `cube-cast` of its own, and the two meet
+  nowhere but on the stream they both subscribe to — which is exactly
+  what a publisher binding for everybody is for. They are two because
+  they are two loops, glfw wanting the thread that opened its window
+  and the bus wanting one of its own, and the split is what spares this
+  client an OpenGL stack it would carry to draw twenty-two pixels. The
+  window is opened `--transparent`, which is already the popup: no
+  decoration, no background, floating above what it is glanced at over.
+  **Where it opens is the compositor's business and nobody else's** —
+  the tray protocol never says where a shell drew the icon, so a window
+  under it cannot be aimed at, and a placement guessed at is a window
+  landing somewhere else on the next screen. `Ctrl` drag carries it,
+  and nothing remembers where.
+  The same split as `tail/` runs through it: `icon.py` draws and
+  touches no bus, `client.py` decides what the icon says and what a
+  click does and touches neither bus nor process, `cast.py` is the only
+  thing that names `subprocess`, `item.py` and `bus.py` the only ones
+  that name D-Bus, and `main.py` the only one that reads `sys.argv`.
+  So the whole of what this client decides is asserted without a bus
+  and without a window.
+  The icon is **drawn in code** rather than shipped as a file: three
+  rhombi around a center are a cube seen by its corner, the outline is
+  the very same cube drawn wider — so no edge is a line and the rim has
+  no gap — and it is what makes the icon readable on a dark bar and a
+  light one alike. A cube that is not there is the same cube in greys
+  and **never a fainter one**: an icon dimmed by its alpha reads as a
+  bar that is busy, where a cube gone grey reads as a cube that is not
+  there. Drawn once and kept, a cube sampled pixel by pixel being tens
+  of milliseconds and a shell being free to read the icon back whenever
+  it likes.
+  `state` is what the bar is written again for — the icon, the tooltip
+  and whether the window is up — and it is compared rather than pushed:
+  the gyroscope alone publishes tens of times a second, and an icon
+  redrawn that often is an icon redrawn for nothing. Both signals go
+  out and the properties with them, because a shell caches what it read
+  and the specification signals alone carry no value. **The words are
+  sent and not merely the revision**, and the reason is in the tray of
+  GNOME rather than in the protocol: it asks the layout for the shape
+  of the menu alone — `GetLayout` with `type` and `children-display`
+  and nothing else — and takes the words of a line from the properties
+  it was last handed, so a menu announcing itself by its revision only
+  goes on offering to show a window that has been up for a while. So
+  `TrayMenu.refresh()` sends `ItemsPropertiesUpdated`, carrying the
+  labels themselves, next to the `LayoutUpdated` that carries the
+  revision — **anything added to a line of the menu has to travel in
+  that signal or it will not be seen to change.** That is a bug this
+  client shipped, and the way it was found is worth as much as the
+  fix: the consumer was read, in
+  `/usr/share/gnome-shell/extensions/ubuntu-appindicators@ubuntu.com/`,
+  where `dbusMenu.js` and `indicatorStatusIcon.js` say what that
+  desktop truly does with an icon. It is where to look again rather
+  than guessing, and it costs nothing to read.
+  The menu carries the show gesture itself, and that is not a
+  duplicate of the click: **a plain left click on GNOME drops the
+  menu**, whatever `ItemIsMenu` says — the extension never reads it,
+  and keeps `Activate` for a *double* click and `SecondaryActivate` for
+  the middle button. So the menu is the left click here, and an icon
+  whose only gesture were `Activate` would be an icon that does nothing
+  on the desktop it was written for. Its lines are numbered rather than counted, separators
+  included, and **never at zero** — zero is the root of the menu, and a
+  line sharing it is a line a shell is free to take for the whole menu.
+  A tray that comes back is registered with again: a shell that
+  restarts takes every icon with it and remembers none of them, and an
+  icon that registered once and never again is a process running on
+  with nothing to show for it.
 - **`viewer/main.py` / `viewer/host.py`** — the entry point assembles
   window, viewer and stream; `CubeCastHost` extends the cubing-algs
   `GlfwHost` with a window title, and takes the keyboard moves back
@@ -492,7 +577,10 @@ shared by the *command lines* rather than by the stream lives in
 `argparser.py`: `LOG_FORMAT`, `parse_stream_endpoint()` and
 `add_endpoint_argument()`, so that every client is pointed at the
 stream by the same option with the same help rather than by a copy of
-it that will drift.
+it that will drift. `parse_size()` and `write_size()` are there for
+the same reason and are a pair on purpose — `cube-tray` writes the
+size that `cube-cast` reads, and one notation spelled in two places is
+one that will be spelled two ways.
 
 A client subscribes to the prefixes it needs (`CUBE_PREFIX`,
 `SESSION_PREFIX`) — ZeroMQ filters by prefix, and no complete topic
@@ -546,13 +634,55 @@ a topic is renamed. `test_tail.py` writes into a list and keeps the
 colors off, an escape counted as a column being a block nothing can
 assert on.
 
+`test_tray_bus.py` starts a **session bus of its own** — a
+`dbus-daemon` for the suite, torn down with it — and never speaks to
+the bus of the desktop. It is not a nicety, and the reason is worth
+keeping: a shell draws a tray icon by *asking the process behind it*,
+synchronously, and a test that registers an icon and then takes its
+process away leaves the shell waiting on a service that will never
+answer. **A shell waiting is a desktop that has stopped**, and the way
+out of it is the power button. So the icon is registered, read and
+clicked on a bus nothing else is listening to, and anything asserted by
+hand against the real bar is a hang waiting to happen. The suite skips
+itself where there is no `dbus-daemon` to start, and it is where the
+two service interfaces are read back exactly as a shell reads them —
+which is how `AboutToShowGroup` was found declaring one structure where
+the protocol declares two arguments.
+
+It is also the **only** way they can be read at all, and that is not a
+matter of taste: the `@method()` of dbus-next wraps the function in one
+that calls it and returns nothing, so `menu.get_layout(0, -1, [])` in a
+test hands back `None` however right the method is. Only the bus calls
+the real one. The same goes for the signals — a revision that moves
+proves nothing, and `ItemsPropertiesUpdated` was missing for a while
+under a test asserting exactly that. **What a shell would see is what
+has to be asserted**: the properties as they come back over the bus,
+and the signals as they arrive. What is left to assert in plain
+unittest is everything that decides — `client.py` and `icon.py`, which
+is why they hold no bus.
+
 ## Style
 
 Enforced by ruff, but worth knowing before writing: single quotes,
 line length 80, one import per line (`force-single-line`), spaced
 f-string braces (`f'{ value }%'`) — which a format spec makes
 impossible, the trailing space landing inside it, so those go through
-`format(value, '.3f')` instead — Google-style docstrings on
+`format(value, '.3f')` instead, and which **a `str.format()` template
+cannot take either**, the spaces being part of the key there:
+`'{ pid }'.format(pid=1)` raises, and an f-string is what such a
+template is written as instead — Google-style docstrings on
 everything public — including `Args:` and `Returns:`. Comments in this
 codebase explain *why* a constraint exists, not what a line does; match
 that register.
+
+`tray/item.py` is the one file where none of that holds, and its header
+says why: the annotations of a service method are **DBus signature
+strings** and not Python types, which is where dbus-next reads the type
+of every argument. A `@no_type_check` under each decorator is what
+keeps `mypy --strict` from reading them as forward declarations, and
+the `# ruff: file-ignore` at the top covers the three shapes the two
+specifications impose — arguments handed over whether or not there is
+anything to do with them, interfaces answering for a constant with no
+state to answer from, and a variant carrying its value where it is
+given. **A new file talking to the bus needs the same two**, and
+neither is a shortcut around a weakness of the code.

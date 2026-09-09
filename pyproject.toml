@@ -24,6 +24,9 @@ dependencies = [
 repository = "https://github.com/Fantomas42/term-timer-clients"
 
 [project.optional-dependencies]
+tray = [
+    "dbus_next>=0.2.3"
+]
 dev = [
     "ruff",
     "mypy",
@@ -34,6 +37,7 @@ dev = [
 
 [project.scripts]
 cube-cast = "term_timer_clients.viewer.main:main"
+cube-tray = "term_timer_clients.tray.main:main"
 tt-tail = "term_timer_clients.tail.main:main"
 
 [tool.setuptools.packages.find]

@@ -19,6 +19,8 @@ from cubing_algs.vcube import VCube
 from term_timer_clients.argparser import LOG_FORMAT
 from term_timer_clients.argparser import ArgumentParser
 from term_timer_clients.argparser import add_endpoint_argument
+from term_timer_clients.argparser import parse_size
+from term_timer_clients.argparser import write_size
 from term_timer_clients.config import Config
 from term_timer_clients.config import configured_cube
 from term_timer_clients.config import configured_endpoint
@@ -35,8 +37,6 @@ from term_timer_clients.viewer.host import CubeCastHost
 logger = logging.getLogger(__name__)
 
 DEFAULT_WINDOW_SIZE = (400, 300)
-
-SIZE_SEPARATOR = 'x'
 
 # Read from the configuration of term-timer, under the very keys the
 # session it listens to is displayed with: a window opened next to a
@@ -194,32 +194,6 @@ def parse_lead(value: str) -> float:
     return read_milliseconds(value, 0)
 
 
-def parse_size(value: str) -> tuple[int, int]:
-    """
-    Read the size of the window a ``WIDTHxHEIGHT`` argument names.
-
-    Args:
-        value: The argument, as it was typed.
-
-    Returns:
-        The width and the height, in pixels.
-
-    Raises:
-        ArgumentTypeError: When the argument names no size.
-
-    """
-    width, separator, height = value.lower().partition(SIZE_SEPARATOR)
-
-    if not separator or not width.isdigit() or not height.isdigit():
-        msg = (
-            f'"{ value }" is not a size, '
-            f'expected WIDTH{ SIZE_SEPARATOR }HEIGHT'
-        )
-        raise ArgumentTypeError(msg)
-
-    return int(width), int(height)
-
-
 def build_parser(config: Config) -> ArgumentParser:
     """
     Describe what the client takes on its command line.
@@ -326,8 +300,7 @@ def build_parser(config: Config) -> ArgumentParser:
         metavar='WIDTHxHEIGHT',
         help=(
             'Set the size of the window.\n'
-            f'Default: { DEFAULT_WINDOW_SIZE[0] }'
-            f'{ SIZE_SEPARATOR }{ DEFAULT_WINDOW_SIZE[1] }.'
+            f'Default: { write_size(DEFAULT_WINDOW_SIZE) }.'
         ),
     )
     parser.add_argument(

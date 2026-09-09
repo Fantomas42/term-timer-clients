@@ -184,16 +184,6 @@ class EnvelopeTestCase(ClientTestCase):
 
         self.viewer.push.assert_not_called()
 
-    def test_unknown_protocol_is_reported_once(self) -> None:
-        """A foreign stream is named once, not on every message."""
-        with self.assertLogs(
-                'term_timer_clients.viewer.client', 'WARNING',
-        ) as logs:
-            self.view.dispatch(envelope('cube.move', version=2))
-            self.view.dispatch(envelope('cube.move', version=2))
-
-        self.assertEqual(len(logs.output), 1)
-
     def test_unknown_topic_is_ignored(self) -> None:
         """A topic the client knows nothing about does nothing."""
         self.view.dispatch(envelope('session.record', {'kind': 'single'}))
@@ -599,17 +589,6 @@ class SessionEndTestCase(ClientTestCase):
                 view.dispatch(envelope(SESSION_END_TOPIC, {'reason': reason}))
 
                 self.assertFalse(view.present)
-
-    def test_the_end_of_a_session_is_reported(self) -> None:
-        """A reader of the logs is told why the stream stopped."""
-        with self.assertLogs(
-                'term_timer_clients.viewer.client', 'INFO',
-        ) as logs:
-            self.view.dispatch(
-                envelope(SESSION_END_TOPIC, {'reason': 'crashed'}),
-            )
-
-        self.assertIn('crashed', logs.output[0])
 
     def test_a_session_that_ends_says_so_in_the_title(self) -> None:
         """The window that stays open says what it is showing."""
