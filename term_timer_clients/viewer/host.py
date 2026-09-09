@@ -155,6 +155,14 @@ class CubeCastHost(GlfwHost):
     # the only one that means anything.
     wanted: str = field(init=False, default='')
 
+    # Where the window stood the moment it was last hidden, and
+    # nothing until then. ``hide()`` withdraws the window rather than
+    # merely unmapping it, and a withdrawn window remapped is one most
+    # compositors place afresh, exactly as a window just opened is -
+    # so what glfw would otherwise forget is kept here, for the next
+    # ``show()`` to hand back.
+    position: tuple[int, int] | None = field(init=False, default=None)
+
     # Where the pieces of the cube stand between the core and the far
     # end of their rays. It starts blown apart: a window opens on a
     # stream that has said nothing yet, and a cube nobody has described
@@ -203,7 +211,9 @@ class CubeCastHost(GlfwHost):
 
         if wanted == SHOW_ORDER:
             self.show()
+            self.restore_position()
         elif wanted == HIDE_ORDER:
+            self.remember_position()
             self.hide()
         elif wanted == CLOSE_ORDER:
             # The one order that truly ends the window, and it reaches
@@ -211,6 +221,31 @@ class CubeCastHost(GlfwHost):
             # is put the window away, and this is the process that
             # opened it saying there is no more window to put away.
             super().on_close()
+
+    def remember_position(self) -> None:
+        """
+        Read where the window stands, before it is taken off the screen.
+
+        Called ahead of ``hide()`` rather than after: a withdrawn
+        window can no longer be trusted to report where it stood.
+        """
+        import glfw  # ruff: ignore[import-outside-top-level]
+
+        if self.window is not None:
+            self.position = glfw.get_window_pos(self.window)
+
+    def restore_position(self) -> None:
+        """
+        Put the window back where it stood before it was last hidden.
+
+        Nothing to do the first time a window is shown: it has never
+        been hidden by this client, and the compositor's own placement
+        is the only one there is yet.
+        """
+        import glfw  # ruff: ignore[import-outside-top-level]
+
+        if self.window is not None and self.position is not None:
+            glfw.set_window_pos(self.window, *self.position)
 
     def tick(self) -> None:
         """Play one frame, whatever was asked of the window first."""
@@ -323,7 +358,7 @@ class CubeCastHost(GlfwHost):
             True when the key was one of them, or one the host answers.
 
         """
-        import glfw  # noqa: PLC0415
+        import glfw  # ruff: ignore[import-outside-top-level]
 
         views = {glfw.KEY_1: DEMO_VIEW, glfw.KEY_2: USER_VIEW}
 
