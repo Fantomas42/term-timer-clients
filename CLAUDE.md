@@ -79,6 +79,23 @@ Three layers, and the boundaries between them are the point:
   throw away what it alone holds of a cube that is gone. `CubeCast` is
   exactly that — the topics a window has a use for, added to the ones
   the link already answers.
+- **`orders.py`** — the three words one client says to a window another
+  one holds: `show`, `hide` and `close`, a line each. It is the other
+  channel of this repository and it is **nothing like the stream** —
+  the stream is a publisher binding for everybody and saying what a
+  cube does, this is one process telling one window what to be, so it
+  travels on the standard input the child was handed rather than on
+  anything bound or named. **The end of the pipe is the third order**,
+  and it is the one nobody has to remember to give: a window driven
+  from outside has no reason of its own to be open, so the process that
+  opened it going away — killed outright included — closes it instead
+  of leaving a window nothing can ever reach again. Both sides live
+  here for the reason both sides of an endpoint do, and it is the same
+  reason `parse_endpoint()` is not written twice: one place saying what
+  an order is. `read_orders()` ignores a word it does not know, exactly
+  as a client ignores a topic it does not know, and `OrderReader` is
+  the very arrangement `EventStream` is — a thread that only ever
+  writes down what the loop reads at its next turn.
 - **`viewer/client.py`** — `CubeCast`, the whole of `cube-cast`, and it
   touches neither a socket nor a window. An envelope comes in and a
   viewer method is called: topics are dispatched through a
@@ -292,7 +309,7 @@ Three layers, and the boundaries between them are the point:
   column by anything that counts characters.
 - **`tray/`** — `cube-tray`, the cube in the bar of the desktop, and
   **two processes rather than one**: the icon holds no cube and draws
-  none, a click on it opens a `cube-cast` of its own, and the two meet
+  none, a `cube-cast` of its own is opened with it, and the two meet
   nowhere but on the stream they both subscribe to — which is exactly
   what a publisher binding for everybody is for. They are two because
   they are two loops, glfw wanting the thread that opened its window
@@ -300,11 +317,23 @@ Three layers, and the boundaries between them are the point:
   client an OpenGL stack it would carry to draw twenty-two pixels. The
   window is opened `--transparent`, which is already the popup: no
   decoration, no background, floating above what it is glanced at over.
+  **The window is shown and hidden, never opened and closed**, and that
+  is not an optimisation but the only way it can be right: a cube
+  describes itself when it connects and *announces its departure and
+  never its arrival*, so `cube.facelets` is published once and a window
+  started in the middle of a session hears it never — `present` stays
+  false, and the ball core is alone in it until the cube connects
+  again. A window opened with the icon has heard all of it, and it goes
+  on hearing it while nobody looks: `--managed` is what makes it one,
+  and a click is a word on a pipe rather than a process, a context and
+  a first frame. What a hidden window costs is `GlfwHost.idle()`, which
+  advances the cube and draws nothing — the drawing is the GPU half of
+  a frame and the only half a hidden window can do without.
   **Where it opens is the compositor's business and nobody else's** —
   the tray protocol never says where a shell drew the icon, so a window
   under it cannot be aimed at, and a placement guessed at is a window
   landing somewhere else on the next screen. `Ctrl` drag carries it,
-  and nothing remembers where.
+  and a window hidden rather than closed comes back where it was left.
   The same split as `tail/` runs through it: `icon.py` draws and
   touches no bus, `client.py` decides what the icon says and what a
   click does and touches neither bus nor process, `cast.py` is the only
@@ -507,6 +536,41 @@ Three layers, and the boundaries between them are the point:
   stays the cube and nothing else. What is still owed is the *title*: a
   window with no bar has nowhere to show it, and it is written all the
   same for a taskbar and an alt-tab to read.
+- **`--managed`** — a window opened for **somebody else to show**, and
+  it is one flag and not three because the three hold together: a
+  window nobody has shown yet has to open hidden, one shown from
+  outside is hidden from outside, and one that is only ever put away is
+  one somebody else closes. What it buys is the whole of why
+  `cube-tray` opens a window nobody asked for yet — a client that has
+  followed the stream from the start has heard the cube describe
+  itself, where one opened in the middle of a session has heard nothing
+  and never will.
+  The same three things are owed to it, and each is somewhere different
+  on purpose. **Hiding a window belongs to cubing-algs**: `visible`,
+  `show()`, `hide()` and the `idle()` turn that advances the cube
+  without drawing it know nothing about a cube or a stream, and a
+  window drawing into a screen nobody is shown is a window whose swap
+  no vsync paces any more — the loop would spin as fast as the machine
+  reads its events, which is the one thing a hidden window must not
+  cost. **The orders belong to `orders.py`**, both sides of the pipe in
+  one place. What is left here is the *decision*: `order()` writes the
+  wish down and `obey()` does it at the next turn — the very
+  arrangement the title travels by, a window belonging to the thread
+  that opened it and the reader having a thread of its own — and
+  `on_close()`, the seam cubing-algs opened for exactly this, is where
+  `Q` and `Escape` are answered by **doing nothing at all**. Not by
+  hiding, which was the first answer and the wrong one: whether the
+  window is on the screen is held by whoever shows it — it is what the
+  icon writes in its menu and what its next click does — so a key
+  putting it away behind that back would be **a second answer to the
+  one question**, with nothing on a one-way pipe for the window to say
+  otherwise with. Closing itself would be worse still: what it takes
+  away is a cube nothing is following any more, which is the whole of
+  what the window was kept open for. The list it prints says so by
+  leaving that line out — `MANAGED_SHORTCUTS` is `VIEWER_SHORTCUTS`
+  minus the line the library names by `HELP_CLOSE`, **found by the keys
+  and never by the words**, so a gesture reworded upstream costs
+  nothing here.
 - **The mouse** — a drag orbits the cube and `Ctrl` held at the press
   carries the window, and **both are inherited**: which button orbits
   is what no mode may change, the drag being the one gesture a viewer
@@ -580,7 +644,11 @@ stream by the same option with the same help rather than by a copy of
 it that will drift. `parse_size()` and `write_size()` are there for
 the same reason and are a pair on purpose — `cube-tray` writes the
 size that `cube-cast` reads, and one notation spelled in two places is
-one that will be spelled two ways.
+one that will be spelled two ways. `orders.py` is the third of these,
+for a client that *drives* another one rather than merely reading the
+same stream: `write_order()` and `read_orders()` are the two sides of
+one word, and they are in one file for the reason both ends of an
+endpoint are.
 
 A client subscribes to the prefixes it needs (`CUBE_PREFIX`,
 `SESSION_PREFIX`) — ZeroMQ filters by prefix, and no complete topic
@@ -624,7 +692,10 @@ events, each with an `event` key naming its type. `test_viewer.py`
 turns them into envelopes (`event` stripped, mapped through `TOPICS`)
 and plays them into a mocked `Viewer` — that is how cube behaviour is
 tested without hardware. `test_protocol.py` uses real ZeroMQ sockets on
-a real thread instead of mocking the transport.
+a real thread instead of mocking the transport, and `test_orders.py`
+opens a real `os.pipe()` for the same reason: what is being asserted
+there is that the *end* of the pipe is heard, and a mock ends whenever
+the test says so.
 
 `tests/fixtures.py::envelope()` builds a message as the publisher
 writes it; use it rather than hand-writing dicts. `TOPICS`, `capture()`

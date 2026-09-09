@@ -25,6 +25,7 @@ from term_timer_clients.config import Config
 from term_timer_clients.config import configured_cube
 from term_timer_clients.config import configured_endpoint
 from term_timer_clients.config import load_config
+from term_timer_clients.orders import OrderReader
 from term_timer_clients.protocol import CUBE_PREFIX
 from term_timer_clients.protocol import SESSION_END_TOPIC
 from term_timer_clients.protocol import EventStream
@@ -353,6 +354,17 @@ def build_parser(config: Config) -> ArgumentParser:
             'Default: False.'
         ),
     )
+    parser.add_argument(
+        '--managed',
+        action='store_true',
+        help=(
+            'Open the window hidden, for whoever opened it to show:\n'
+            'the orders show, hide and close arrive on the standard\n'
+            'input, one per line, and its end closes the window.\n'
+            'Q and Escape are then not answered at all.\n'
+            'Default: False.'
+        ),
+    )
 
     return parser
 
@@ -432,6 +444,7 @@ def build_host(options: Namespace) -> CubeCastHost:
         framing=framing,
         transparent=options.transparent,
         msaa=not options.no_msaa,
+        managed=options.managed,
     )
 
 
@@ -457,6 +470,19 @@ def main() -> int:
     # that may not be there yet, and misses nothing while it waits
     stream.start(host.view.dispatch)
 
+    # A window driven from outside takes its orders in a thread of its
+    # own, for the very reason the stream is read in one: glfw wants
+    # the thread that opened the window, and both of these only ever
+    # write down what the next turn of the loop reads. The standard
+    # input is where they arrive because it is the one channel a
+    # process is handed by whoever started it: nothing is bound,
+    # nothing is named, and a window outliving that process is a window
+    # nobody could ever reach again - the end of the pipe closes it.
+    orders = OrderReader(sys.stdin, host.order) if options.managed else None
+
+    if orders is not None:
+        orders.start()
+
     try:
         host.run()
     except CubingAlgsError as error:
@@ -466,5 +492,8 @@ def main() -> int:
         logger.info('Closing the window')
     finally:
         stream.stop()
+
+        if orders is not None:
+            orders.stop()
 
     return 0

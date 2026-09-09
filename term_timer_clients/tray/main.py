@@ -105,7 +105,7 @@ def build_parser(config: Config) -> ArgumentParser:
 
 def build_tray(options: Namespace) -> CubeTray:
     """
-    Assemble the icon and the window a click on it opens.
+    Assemble the icon and the window a click on it shows.
 
     Args:
         options: The arguments the client was called with.
@@ -190,6 +190,14 @@ def main() -> int:
     # next tick reads - and a subscriber connected first misses nothing
     # of the session it waited for.
     stream.start(tray.dispatch)
+
+    # Opened with the icon and hidden behind it, for the reason the
+    # icon exists at all: a cube describes itself when it connects and
+    # announces nothing when it arrives, so a window opened at the
+    # click has heard none of it and shows a core alone. The one that
+    # was there all along is the cube as it now stands, and a click is
+    # a line on a pipe rather than a process and a first frame.
+    tray.popup.launch()
 
     try:
         asyncio.run(serve(tray))

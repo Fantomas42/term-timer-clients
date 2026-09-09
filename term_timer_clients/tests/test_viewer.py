@@ -9,6 +9,7 @@ until a stage is attached to it - is enough. The captures of
 import math
 import sys
 import unittest
+from collections.abc import Sequence
 from itertools import pairwise
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -24,11 +25,13 @@ from cubing_algs.display.gl import orientation_basis
 from cubing_algs.display.gl.camera import parse_rotation
 from cubing_algs.display.gl.constants import CORE_COLOR
 from cubing_algs.display.gl.constants import DEFAULT_LOOK
+from cubing_algs.display.gl.constants import HELP_CLOSE
 from cubing_algs.display.gl.constants import MOVE_LEAD
 from cubing_algs.display.gl.constants import VIEWER_BACKGROUND
 from cubing_algs.display.gl.constants import VIEWER_HELP
 from cubing_algs.display.gl.constants import viewer_help
 from cubing_algs.display.gl.context import GLContextError
+from cubing_algs.display.gl.host import GlfwHost
 from cubing_algs.display.gl.scene import CubieInstance
 from cubing_algs.display.gl.scene import Scene
 from cubing_algs.display.gl.transforms import ORIGIN
@@ -36,6 +39,9 @@ from cubing_algs.display.gl.transforms import Quat
 from cubing_algs.display.gl.transforms import Vec3
 from cubing_algs.vcube import VCube
 
+from term_timer_clients.orders import CLOSE_ORDER
+from term_timer_clients.orders import HIDE_ORDER
+from term_timer_clients.orders import SHOW_ORDER
 from term_timer_clients.protocol import SESSION_END_TOPIC
 from term_timer_clients.protocol import SESSION_PREFIX
 from term_timer_clients.tests.fixtures import envelope
@@ -61,6 +67,8 @@ from term_timer_clients.viewer.framing import USER_ROTATION
 from term_timer_clients.viewer.framing import USER_VIEW
 from term_timer_clients.viewer.framing import Framing
 from term_timer_clients.viewer.framing import flipped
+from term_timer_clients.viewer.host import MANAGED_SHORTCUTS
+from term_timer_clients.viewer.host import VIEWER_SHORTCUTS
 from term_timer_clients.viewer.host import CubeCastHost
 
 ENDPOINT = 'tcp://127.0.0.1:5333'
@@ -139,19 +147,24 @@ def solved_scene() -> Scene:
     return Viewer(cube=VCube()).scene
 
 
-def run_main(host: MagicMock, stream: MagicMock) -> int:
+def run_main(
+        host: MagicMock,
+        stream: MagicMock,
+        extra: Sequence[str] = (),
+) -> int:
     """
     Run the entry point on a mocked window and a mocked stream.
 
     Args:
         host: The host standing in for the window.
         stream: The object standing in for the subscription.
+        extra: What is typed on top of the endpoint.
 
     Returns:
         The exit code of the entry point.
 
     """
-    argv = ['cube-cast', '-e', ENDPOINT]
+    argv = ['cube-cast', '-e', ENDPOINT, *extra]
 
     # The configuration of a machine running the tests is never read:
     # what the client is given here is its command line and nothing else
@@ -1448,6 +1461,157 @@ class CubeCastHostTestCase(unittest.TestCase):
         self.assertIn('Esc, Q', self.host.shortcuts)
 
 
+class ManagedWindowTestCase(unittest.TestCase):
+    """A window opened for another process to show, hide and close."""
+
+    def setUp(self) -> None:
+        """Wire a managed host on a mocked viewer and a client."""
+        self.viewer = create_autospec(Viewer, instance=True)
+        self.viewer.cube = VCube()
+        self.view = CubeCast(self.viewer)
+        self.host = CubeCastHost(
+            viewer=self.viewer,
+            title=self.view.title,
+            view=self.view,
+            managed=True,
+        )
+
+    def test_a_managed_window_opens_hidden(self) -> None:
+        """There is nothing else it could open as: nobody asked yet."""
+        self.assertFalse(self.host.visible)
+
+    def test_a_window_of_its_own_opens_shown(self) -> None:
+        """A cube-cast typed into a terminal is a window that is there."""
+        host = CubeCastHost(
+            viewer=self.viewer, title=self.view.title, view=self.view,
+        )
+
+        self.assertTrue(host.visible)
+
+    def test_an_order_is_written_down_and_not_obeyed(self) -> None:
+        """A window belongs to the thread that opened it."""
+        self.host.order(SHOW_ORDER)
+
+        self.assertEqual(self.host.wanted, SHOW_ORDER)
+        self.assertFalse(self.host.visible)
+
+    def test_an_order_is_obeyed_at_the_next_turn_of_the_loop(self) -> None:
+        """What the reader wrote down is what the loop does."""
+        glfw = MagicMock()
+        self.host.order(SHOW_ORDER)
+
+        with patch.dict(sys.modules, {'glfw': glfw}):
+            self.host.obey()
+
+        self.assertTrue(self.host.visible)
+        self.assertEqual(self.host.wanted, '')
+
+    def test_the_window_is_put_away_on_the_hide_order(self) -> None:
+        """Nothing is given back: it goes on reading the stream."""
+        glfw = MagicMock()
+
+        with patch.dict(sys.modules, {'glfw': glfw}):
+            self.host.order(SHOW_ORDER)
+            self.host.obey()
+
+            self.host.order(HIDE_ORDER)
+            self.host.obey()
+
+        self.assertFalse(self.host.visible)
+
+    def test_the_close_order_ends_the_window(self) -> None:
+        """The process that opened it is the one saying it is over."""
+        with patch.object(GlfwHost, 'on_close') as closing:
+            self.host.order(CLOSE_ORDER)
+            self.host.obey()
+
+        closing.assert_called_once_with()
+
+    def test_an_order_nobody_knows_is_ignored(self) -> None:
+        """A client ignores what it does not know, orders included."""
+        glfw = MagicMock()
+
+        with patch.dict(sys.modules, {'glfw': glfw}):
+            self.host.order('explode')
+            self.host.obey()
+
+        self.assertFalse(self.host.visible)
+        glfw.show_window.assert_not_called()
+
+    def test_the_last_order_is_the_one_that_stands(self) -> None:
+        """They answer one question, so the last answer is the answer."""
+        glfw = MagicMock()
+
+        with patch.dict(sys.modules, {'glfw': glfw}):
+            self.host.order(SHOW_ORDER)
+            self.host.order(HIDE_ORDER)
+            self.host.obey()
+
+        self.assertFalse(self.host.visible)
+
+    def test_a_frame_reads_the_orders_first(self) -> None:
+        """A window shown is shown on the very frame it was asked for."""
+        with (
+            patch.object(GlfwHost, 'tick') as ticked,
+            patch.object(self.host, 'obey') as obeyed,
+        ):
+            self.host.tick()
+
+        obeyed.assert_called_once_with()
+        ticked.assert_called_once_with()
+
+    def test_a_hidden_turn_reads_the_orders_too(self) -> None:
+        """A window nobody is shown is the one waiting to be shown."""
+        with (
+            patch.object(GlfwHost, 'idle') as idled,
+            patch.object(self.host, 'obey') as obeyed,
+        ):
+            self.host.idle()
+
+        obeyed.assert_called_once_with()
+        idled.assert_called_once_with()
+
+    def test_the_closing_keys_are_not_a_managed_window_to_answer(
+            self,
+    ) -> None:
+        """Whoever shows the window is the one holding whether it is up."""
+        glfw = MagicMock()
+
+        with patch.dict(sys.modules, {'glfw': glfw}):
+            self.host.show()
+            self.host.on_close()
+
+        self.assertTrue(self.host.visible)
+        glfw.set_window_should_close.assert_not_called()
+
+    def test_the_closing_keys_still_close_a_window_of_its_own(self) -> None:
+        """A window nobody drives is a window its own keys close."""
+        glfw = MagicMock()
+        host = CubeCastHost(
+            viewer=self.viewer, title=self.view.title, view=self.view,
+        )
+
+        with patch.dict(sys.modules, {'glfw': glfw}):
+            host.on_close()
+
+        glfw.set_window_should_close.assert_called_once()
+
+    def test_the_list_offers_no_key_the_window_refuses(self) -> None:
+        """A list describing a window other than the one open is a wrong one."""
+        self.assertNotIn(HELP_CLOSE, self.host.shortcuts)
+        self.assertIn(HELP_CLOSE, VIEWER_SHORTCUTS)
+
+    def test_the_closing_line_is_the_only_one_left_out(self) -> None:
+        """The keys are the ones of the library, whoever shows the window."""
+        managed = MANAGED_SHORTCUTS.splitlines()
+        plain = VIEWER_SHORTCUTS.splitlines()
+
+        left_out = [line for line in plain if line not in managed]
+
+        self.assertEqual(len(left_out), 1)
+        self.assertTrue(left_out[0].startswith(f'  { HELP_CLOSE }'))
+
+
 class ShortcutsTestCase(unittest.TestCase):
     """The list a window prints, against the window it opens."""
 
@@ -1766,6 +1930,50 @@ class MainTestCase(unittest.TestCase):
         self.assertEqual(run_main(host, stream), 0)
 
         stream.stop.assert_called_once_with()
+
+
+class ManagedOptionTestCase(unittest.TestCase):
+    """The window opened for another process to show."""
+
+    def test_build_host_managed(self) -> None:
+        """A window opened for somebody else to show opens hidden."""
+        options = entry.build_parser({}).parse_args(
+            ['-e', ENDPOINT, '--managed'],
+        )
+
+        host = entry.build_host(options)
+
+        self.assertTrue(host.managed)
+        self.assertFalse(host.visible)
+
+    def test_main_takes_its_orders_on_the_standard_input(self) -> None:
+        """The one channel a process is handed by whoever started it."""
+        host = MagicMock()
+        stream = MagicMock()
+
+        with patch.object(entry, 'OrderReader') as reader:
+            self.assertEqual(run_main(host, stream, ['--managed']), 0)
+
+        reader.assert_called_once_with(sys.stdin, host.order)
+        reader.return_value.start.assert_called_once_with()
+        reader.return_value.stop.assert_called_once_with()
+
+    def test_main_takes_no_orders_of_its_own(self) -> None:
+        """A window typed into a terminal answers a keyboard, not a pipe."""
+        with patch.object(entry, 'OrderReader') as reader:
+            self.assertEqual(run_main(MagicMock(), MagicMock()), 0)
+
+        reader.assert_not_called()
+
+    def test_main_gives_the_orders_back_however_it_ends(self) -> None:
+        """A reader left on a pipe is a thread nothing can ever end."""
+        host = MagicMock()
+        host.run.side_effect = KeyboardInterrupt
+
+        with patch.object(entry, 'OrderReader') as reader:
+            self.assertEqual(run_main(host, MagicMock(), ['--managed']), 0)
+
+        reader.return_value.stop.assert_called_once_with()
 
 
 class ViewOptionTestCase(unittest.TestCase):

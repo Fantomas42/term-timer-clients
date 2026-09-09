@@ -1,11 +1,15 @@
 """The window behind the icon, and the process it really is."""
 import logging
 import shutil
-import signal
 import subprocess  # ruff: ignore[suspicious-subprocess-import]
 import sys
 from collections.abc import Sequence
+from contextlib import suppress
 from pathlib import Path
+
+from term_timer_clients.orders import HIDE_ORDER
+from term_timer_clients.orders import SHOW_ORDER
+from term_timer_clients.orders import write_order
 
 logger = logging.getLogger(__name__)
 
@@ -16,6 +20,15 @@ logger = logging.getLogger(__name__)
 CAST_PROGRAM = 'cube-cast'
 
 TRANSPARENT_FLAG = '--transparent'
+
+# What makes the window one this icon shows rather than one it opens:
+# it comes up hidden and takes its orders on the pipe, which is the
+# whole of why there is a window there at all before anybody asked for
+# one. **A cube announces its departure and never its arrival**, and it
+# describes itself once, when it connects: a window opened at the click
+# has heard neither, and shows a core alone until the cube connects
+# again - which, in the middle of a session, is never.
+MANAGED_FLAG = '--managed'
 
 ENDPOINT_FLAG = '--endpoint'
 
@@ -29,9 +42,9 @@ DEFAULT_POPUP_SIZE = (280, 280)
 SIZE_SEPARATOR = 'x'
 
 # How long a window is given to close itself before it is taken down.
-# It is asked the way a terminal asks, and it answers the way it
-# answers a Ctrl-C: a window that hangs on its driver is still a window
-# the next click has to be able to reopen.
+# It is asked by the end of its pipe, which is the last of the three
+# orders it answers: a window that hangs on its driver is still a
+# window the next click has to be able to reopen.
 CLOSING_TIMEOUT = 2.0
 
 
@@ -87,6 +100,7 @@ def cast_command(
         program or cast_program(),
         ENDPOINT_FLAG, endpoint,
         TRANSPARENT_FLAG,
+        MANAGED_FLAG,
         WINDOW_SIZE_FLAG, f'{ width }{ SIZE_SEPARATOR }{ height }',
         *extra,
     ]
@@ -94,7 +108,7 @@ def cast_command(
 
 class Popup:
     """
-    The window the icon opens, held as the process it is.
+    The window the icon shows, held as the process it is.
 
     Two processes rather than one, and the reason is that they are two
     loops: glfw wants the thread that opened its window, and the bus
@@ -103,9 +117,20 @@ class Popup:
     subscribe to - which is exactly what a publisher binding for
     everybody is for.
 
-    The window is its own to close: ``Q``, ``Escape`` and the reason a
-    process has to go away are answered by ``cube-cast`` alone, and
-    ``settle()`` is how the icon hears about it.
+    **It is opened once and shown many times**, and that is not an
+    optimisation. A ``cube-cast`` started at the click has heard
+    nothing of what came before: a cube announces its departure and
+    never its arrival, and it describes itself when it connects, so a
+    window opened in the middle of a session shows the ball core alone
+    until the cube connects again. One opened with the icon has heard
+    all of it, and showing it costs a line on a pipe rather than a
+    process, a context and a first frame.
+
+    The pipe is the whole of the coupling: three words go down it, and
+    its end is the third. So a tray taken away by anything at all -
+    including what leaves it no chance to close anything - closes the
+    window it opened, where a window with a life of its own would be
+    left on the desktop with nothing to reach it.
     """
 
     def __init__(self, command: Sequence[str]) -> None:
@@ -117,64 +142,95 @@ class Popup:
 
         """
         self.command = list(command)
-        self.process: subprocess.Popen[bytes] | None = None
+        self.process: subprocess.Popen[str] | None = None
+        self.shown = False
 
     @property
-    def shown(self) -> bool:
+    def running(self) -> bool:
         """
-        Tell whether the window is open.
+        Tell whether there is a window behind the icon at all.
 
         Returns:
-            True while a window is up.
+            True while the process is up, shown or not.
 
         """
-        return self.process is not None
+        process = self.process
 
-    def show(self) -> None:
-        """
-        Open the window, unless one is already up.
+        return process is not None and process.poll() is None
 
-        A window that cannot be opened is reported and nothing else:
-        the icon is what is left, and it is still the one thing saying
-        whether a cube is there.
+    def launch(self) -> None:
         """
-        if self.process is not None:
+        Open the window, hidden, and leave it following the stream.
+
+        Called with the icon rather than at the first click: what a
+        window is worth showing depends on what it has heard, and it
+        can only have heard what it was there for. A window that
+        cannot be opened is reported and nothing else - the icon is
+        what is left, and it is still the one thing saying whether a
+        cube is there.
+        """
+        if self.running:
             return
 
         try:
             self.process = subprocess.Popen(  # ruff: ignore[subprocess-without-shell-equals-true]
                 self.command,
+                stdin=subprocess.PIPE,
+                text=True,
+                bufsize=1,
             )
         except OSError as error:
             logger.error(  # ruff: ignore[error-instead-of-exception]
                 'Cannot open the window: %s', error,
             )
+            self.process = None
+
+    def order(self, order: str) -> bool:
+        """
+        Ask the window for one thing, if there is one to ask.
+
+        Args:
+            order: What is asked of it.
+
+        Returns:
+            True when the order was handed over.
+
+        """
+        process = self.process
+
+        if process is None or process.stdin is None:
+            return False
+
+        return write_order(process.stdin, order)
+
+    def show(self) -> None:
+        """
+        Put the window on the screen, opening one if there is none.
+
+        A window is opened again where the one that was following the
+        stream is gone - it crashed, or somebody took it away - and
+        what comes up is then a window that has heard nothing. It is
+        the honest answer to a click all the same: the alternative is
+        an icon that stops showing anything at all.
+        """
+        self.launch()
+
+        self.shown = self.order(SHOW_ORDER)
 
     def hide(self) -> None:
         """
-        Close the window, and wait for it to be gone.
+        Take the window off the screen, and leave it following.
 
-        It is asked the way a terminal asks - the very signal a Ctrl-C
-        sends - so the window closes through the same path it closes by
-        hand, its stream stopped and its socket given back. Only a
-        window that will not go is taken down.
+        Nothing is closed and nothing is given back: the window goes on
+        reading the stream behind the icon, which is the whole of what
+        the next click is quick and right about.
         """
-        process, self.process = self.process, None
+        self.order(HIDE_ORDER)
 
-        if process is None:
-            return
-
-        process.send_signal(signal.SIGINT)
-
-        try:
-            process.wait(timeout=CLOSING_TIMEOUT)
-        except subprocess.TimeoutExpired:
-            logger.warning('The window did not close, taking it down')
-            process.kill()
-            process.wait()
+        self.shown = False
 
     def toggle(self) -> None:
-        """Open the window, or close the one that is up."""
+        """Show the window, or take away the one that is up."""
         if self.shown:
             self.hide()
         else:
@@ -182,12 +238,13 @@ class Popup:
 
     def settle(self) -> bool:
         """
-        Notice a window that was closed from the window itself.
+        Notice a window whose process went away.
 
-        A popup is closed by clicking the icon again, but it is also a
-        window: ``Q`` closes it, and so does anything that takes a
-        process away. The icon has to hear about it, or the next click
-        would try to close a window that is already gone.
+        A window is put away rather than closed by its own keys, so
+        this is a window that crashed or that somebody took away. The
+        icon has to hear about it: the next click has a window to open
+        again, and there is nothing left following the stream in the
+        meantime.
 
         Returns:
             True when the window went away on its own.
@@ -199,9 +256,32 @@ class Popup:
             return False
 
         self.process = None
+        self.shown = False
 
         return True
 
     def close(self) -> None:
-        """Take the window down, the tray going away with it."""
-        self.hide()
+        """
+        Take the window down, the tray going away with it.
+
+        The end of the pipe is what asks: it is the last of the three
+        orders the window answers, and the only one that cannot be
+        missed - a process taken away without a word closes its pipe
+        all the same. Only a window that will not go is taken down.
+        """
+        process, self.process = self.process, None
+        self.shown = False
+
+        if process is None:
+            return
+
+        if process.stdin is not None:
+            with suppress(OSError, ValueError):
+                process.stdin.close()
+
+        try:
+            process.wait(timeout=CLOSING_TIMEOUT)
+        except subprocess.TimeoutExpired:
+            logger.warning('The window did not close, taking it down')
+            process.kill()
+            process.wait()

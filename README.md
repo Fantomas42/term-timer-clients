@@ -99,6 +99,7 @@ library opens.
 Usage: cube-cast [-h] [-e ENDPOINT] [-o ORIENTATION] [-p PALETTE] [-m MODE]
                  [-r ROTATION] [-v VIEW] [-w WIDTHxHEIGHT] [-b MILLISECONDS]
                  [-l MILLISECONDS] [--mirror] [-t] [-g] [--no-msaa]
+                 [--managed]
 
 Watch a cube in 3D, from the term-timer event stream.
 
@@ -147,6 +148,11 @@ Options:
                         Default: False.
   --no-msaa             Draw the cube into the window itself, aliased but with
                         nothing in between.
+                        Default: False.
+  --managed             Open the window hidden, for whoever opened it to show:
+                        the orders show, hide and close arrive on the standard
+                        input, one per line, and its end closes the window.
+                        Q and Escape are then not answered at all.
                         Default: False.
 ```
 
@@ -255,6 +261,29 @@ A transparent window is refused the multisampling of an ordinary one,
 so the cube is antialiased aside and copied in. `--no-msaa` gives that
 detour up and draws straight into the window, aliased but with nothing
 in between — and drops the antialiasing of an ordinary window as well.
+
+`--managed` is for a window opened by another process rather than
+typed: it comes up hidden, and `show`, `hide` and `close` written on
+its standard input are what put it on the screen and take it off.
+Nothing is released while it is hidden — it goes on reading the stream
+and playing the moves, so what is shown again is the cube as it now
+stands rather than a window starting on silence. The end of that input
+is the third order: a window whose process went away closes rather than
+staying on the desktop with nothing left to reach it. `Q` and `Escape`
+are not answered at all, and the list the window prints leaves them
+out: whoever shows such a window is the one holding whether it is up,
+and a key changing that behind their back would be a second answer to
+the one question. `cube-tray` is what it was written for, and driving
+one from a shell is a matter of a pipe:
+
+```bash
+mkfifo /tmp/cube.orders
+cube-cast --transparent --managed < /tmp/cube.orders &
+exec 3> /tmp/cube.orders   # a writer that stays, or the window goes at once
+echo show >&3
+echo hide >&3
+exec 3>&-                  # nobody left to order it about: the window closes
+```
 
 ## tt-tail
 
@@ -374,8 +403,8 @@ its own buffering is a tail that says nothing for pages at a time.
 ## cube-tray
 
 An icon in the bar rather than a window: it says whether a cube is
-connected, and opens a small `cube-cast` laid over the desktop, which
-the same gesture closes.
+connected, and shows a small `cube-cast` laid over the desktop, which
+the same gesture puts away.
 
 ```bash
 cube-tray
@@ -401,12 +430,27 @@ A **double click** opens it directly, and so does the **middle
 button**. The menu holds the same three things either way: what the
 cube is, showing or hiding it, and quitting.
 
-The window it opens is `cube-cast --transparent`: no decoration, no
-background and floating above everything. **Where it opens is up to the
-compositor** — the tray protocol never tells anybody where a shell drew
-its icons, so a window cannot be aimed under one. `Ctrl` and a drag
-carry it wherever it suits, and `Q` or `Escape` close it, which the
-icon notices.
+The window it shows is `cube-cast --transparent --managed`: no
+decoration, no background and floating above everything. **It is opened
+with the icon and hidden behind it**, rather than started at the click,
+and that is not an optimisation: a cube describes itself when it
+connects and announces nothing when it arrives, so a window started in
+the middle of a session has heard neither and shows its ball core alone
+until the cube connects again. The one that was there all along has
+heard all of it, and a click costs a line on a pipe instead of a
+process, an OpenGL context and a first frame.
+
+That pipe is the standard input of the window, and it carries three
+words — `show`, `hide` and `close`. Its end is the third: a tray taken
+away by anything at all, `kill -9` included, closes the window it
+opened rather than leaving it on the desktop with nothing left to reach
+it. `Q` and `Escape` do nothing there — whether the window is up is
+what the icon holds and what its menu says, so the icon is what puts it
+away.
+
+**Where it opens is up to the compositor** — the tray protocol never
+tells anybody where a shell drew its icons, so a window cannot be aimed
+under one. `Ctrl` and a drag carry it wherever it suits.
 
 It needs a system tray to register with, which not every desktop has:
 on GNOME that is the AppIndicator extension, shipped and enabled on

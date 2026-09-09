@@ -2,6 +2,7 @@
 from dataclasses import dataclass
 from dataclasses import field
 
+from cubing_algs.display.gl.constants import HELP_CLOSE
 from cubing_algs.display.gl.constants import HELP_MOUSE
 from cubing_algs.display.gl.constants import HELP_WINDOW
 from cubing_algs.display.gl.constants import HelpEntry
@@ -9,11 +10,17 @@ from cubing_algs.display.gl.constants import help_block
 from cubing_algs.display.gl.constants import viewer_entries
 from cubing_algs.display.gl.host import GlfwHost
 
+from term_timer_clients.orders import CLOSE_ORDER
+from term_timer_clients.orders import HIDE_ORDER
+from term_timer_clients.orders import SHOW_ORDER
 from term_timer_clients.viewer.assembly import Assembly
 from term_timer_clients.viewer.client import CubeCast
 from term_timer_clients.viewer.framing import DEMO_VIEW
 from term_timer_clients.viewer.framing import USER_VIEW
 from term_timer_clients.viewer.framing import Framing
+
+# What the window calls itself at the top of the list it prints.
+CAST_NAME = 'cube-cast'
 
 # What the window answers, written when it opens. The lines are asked
 # of cubing-algs rather than copied out of it: the gestures and the keys
@@ -22,14 +29,32 @@ from term_timer_clients.viewer.framing import Framing
 # this client owns of it is the three view keys and the name at the top
 # - and `moves=False`, which is what takes the keys turning a cube out
 # of the list as it takes them out of the window.
-VIEWER_SHORTCUTS = help_block(
-    'cube-cast',
-    (
-        *viewer_entries(HELP_MOUSE),
-        HelpEntry('1', 'Frame the cube the way an algorithm is read'),
-        HelpEntry('2', 'Frame the cube the way the hand holding it sees it'),
-        HelpEntry('3', 'Pass behind the cube, and come back'),
-        *viewer_entries(HELP_WINDOW),
+VIEWER_ENTRIES: tuple[HelpEntry, ...] = (
+    *viewer_entries(HELP_MOUSE),
+    HelpEntry('1', 'Frame the cube the way an algorithm is read'),
+    HelpEntry('2', 'Frame the cube the way the hand holding it sees it'),
+    HelpEntry('3', 'Pass behind the cube, and come back'),
+    *viewer_entries(HELP_WINDOW),
+)
+
+VIEWER_SHORTCUTS = help_block(CAST_NAME, VIEWER_ENTRIES)
+
+# The same list for a window somebody else shows, with the keys that
+# close a window **taken out rather than reworded**: whether the window
+# is on the screen is held by whoever shows it, and a key putting it
+# away behind that back would be a second answer to the one question -
+# an icon left offering to hide a window that is already gone, with
+# nothing on the pipe for the window to say otherwise with. So the
+# window answers them by doing nothing, and the list says so by not
+# offering them. **The line is found by the keys the library names**
+# and never by the words it happened to be written with, so a gesture
+# reworded upstream costs nothing here.
+MANAGED_SHORTCUTS = help_block(
+    CAST_NAME,
+    tuple(
+        entry
+        for entry in VIEWER_ENTRIES
+        if entry.keys != HELP_CLOSE
     ),
 )
 
@@ -77,6 +102,23 @@ class CubeCastHost(GlfwHost):
     the way an algorithm is written, and the cube seen the way the
     hand holding it sees it - are one key each, the third passing
     behind whichever of them is being watched.
+
+    ``managed`` is a window opened for **somebody else to show**: it
+    opens hidden, takes its orders on its standard input, and the end
+    of that pipe is the end of the window. It is what makes a window
+    worth keeping rather than reopening - a client that follows the
+    stream from the start is a client that has heard the cube describe
+    itself, where one opened in the middle of a session has heard
+    nothing and shows a core alone until the cube connects again. The
+    orders arrive on the reader thread and a window belongs to the
+    thread that opened it, so ``order()`` only ever writes down what
+    was asked and ``obey()`` does it at the next turn of the loop -
+    the very arrangement the title travels by.
+
+    Such a window answers **no key of its own** about being on the
+    screen: whoever shows it is the one holding whether it is, and a
+    key that hid or closed it behind that back would be a second
+    answer to the one question.
     """
 
     view: CubeCast = field(kw_only=True)
@@ -99,11 +141,109 @@ class CubeCastHost(GlfwHost):
     # added by this class, so the list saying so belongs to it too.
     shortcuts: str = VIEWER_SHORTCUTS
 
+    # Whether this window is opened for another process to show. It is
+    # one flag and not three because the three hold together: a window
+    # nobody has shown yet has to open hidden, one shown from outside
+    # is hidden from outside, and one that is only ever put away is one
+    # somebody else closes.
+    managed: bool = False
+
+    # What was last asked of the window, and nothing has yet. Written
+    # by whoever reads the orders and read by the loop: a string and
+    # not a queue, the orders being answers to the same question -
+    # whether the window is on the screen - so the last one asked is
+    # the only one that means anything.
+    wanted: str = field(init=False, default='')
+
     # Where the pieces of the cube stand between the core and the far
     # end of their rays. It starts blown apart: a window opens on a
     # stream that has said nothing yet, and a cube nobody has described
     # is a cube that is not there.
     assembly: Assembly = field(init=False, default_factory=Assembly)
+
+    def __post_init__(self) -> None:
+        """
+        Settle what a window driven from outside opens as.
+
+        A window shown by another process opens hidden - there is
+        nothing else it could open as, the process that shows it not
+        having asked yet - and the keys that close a window put it away
+        instead. The list it prints says so: what a window answers and
+        what it offers are one decision, and they were two copies of it
+        for as long as the list was written out by hand.
+        """
+        if not self.managed:
+            return
+
+        self.visible = False
+        self.shortcuts = MANAGED_SHORTCUTS
+
+    def order(self, order: str) -> None:
+        """
+        Write down what was just asked of the window.
+
+        Called from the thread reading the orders, which is why it
+        writes and does nothing: glfw wants its window handled from
+        the thread that opened it.
+
+        Args:
+            order: What is asked of the window.
+
+        """
+        self.wanted = order
+
+    def obey(self) -> None:
+        """
+        Do what was asked of the window, on the thread that owns it.
+
+        An order nobody here knows is ignored rather than guessed at,
+        which is what this client does with a topic it does not know.
+        """
+        wanted, self.wanted = self.wanted, ''
+
+        if wanted == SHOW_ORDER:
+            self.show()
+        elif wanted == HIDE_ORDER:
+            self.hide()
+        elif wanted == CLOSE_ORDER:
+            # The one order that truly ends the window, and it reaches
+            # the host rather than `on_close()`: what the keys do here
+            # is put the window away, and this is the process that
+            # opened it saying there is no more window to put away.
+            super().on_close()
+
+    def tick(self) -> None:
+        """Play one frame, whatever was asked of the window first."""
+        self.obey()
+
+        super().tick()
+
+    def idle(self) -> None:
+        """Play one turn of a hidden window, orders read first."""
+        self.obey()
+
+        super().idle()
+
+    def on_close(self) -> None:
+        """
+        Answer the keys asking for the window to go, or refuse them.
+
+        A window shown by another process is **not the one deciding**
+        whether it is on the screen: that process holds the answer, and
+        it is the answer an icon writes in its menu. A key hiding the
+        window behind its back would leave it offering to hide what is
+        already gone, and a key closing it would take away the very
+        thing it was kept open for - a client that has followed the
+        stream from the start. So they are answered by doing nothing,
+        and the list this window prints does not offer them.
+
+        Closing it is that process saying so: the ``close`` order, or
+        the end of the pipe the orders arrive on.
+        """
+        if self.managed:
+            return
+
+        super().on_close()
 
     def frame(self, delta: float) -> None:
         """

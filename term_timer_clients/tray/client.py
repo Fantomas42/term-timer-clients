@@ -76,12 +76,15 @@ class CubeTray(CubeLink):
 
     Nothing here talks to a bus and nothing opens a window: the popup
     is handed over, the way a tail is handed its writer, so that what a
-    click does is asserted without either.
+    click does is asserted without either. What a click does is *show*
+    a window and never open one - the window is opened with the icon
+    and hidden behind it, which is what makes it a window that has
+    heard the whole session rather than one that starts on silence.
     """
 
     def __init__(self, popup: Popup) -> None:
         """
-        Bind an icon to the window a click on it opens.
+        Bind an icon to the window a click on it shows.
 
         Args:
             popup: The window shown under the icon.
@@ -149,7 +152,7 @@ class CubeTray(CubeLink):
         return self.connected, self.label, self.popup.shown
 
     def toggle(self) -> None:
-        """Open the window under the icon, or close the one that is up."""
+        """Show the window under the icon, or take away the one that is up."""
         self.popup.toggle()
 
     def activate(self, identifier: int) -> None:
@@ -170,7 +173,7 @@ class CubeTray(CubeLink):
             self.stop()
 
     def stop(self) -> None:
-        """Close the window, and let the bar go."""
+        """Take the window down, and let the bar go."""
         logger.info('Closing the tray')
 
         self.popup.close()
@@ -178,7 +181,12 @@ class CubeTray(CubeLink):
 
     def settle(self) -> bool:
         """
-        Bring the icon up to date with a window that closed itself.
+        Bring the icon up to date with a window that is no longer there.
+
+        The window is put away rather than closed by its own keys, so
+        one that is gone is one that crashed or that somebody took
+        away: nothing is following the stream any more, and the next
+        click has a window to open again.
 
         Returns:
             True when the window went away on its own.
@@ -187,6 +195,6 @@ class CubeTray(CubeLink):
         if not self.popup.settle():
             return False
 
-        logger.info('The window was closed')
+        logger.info('The window went away')
 
         return True
