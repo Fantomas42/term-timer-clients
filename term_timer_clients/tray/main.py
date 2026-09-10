@@ -2,6 +2,7 @@
 import asyncio
 import logging
 import sys
+import time
 from argparse import Namespace
 
 from term_timer_clients.argparser import LOG_FORMAT
@@ -40,7 +41,8 @@ PREFIXES = (CUBE_PREFIX, SESSION_END_TOPIC)
 # How often the bar is brought up to date, in seconds. Nothing is drawn
 # on this clock - the icon is written again only when what it says has
 # changed - so what it buys is how long a window closing itself goes
-# unnoticed, and it sits where the stream reads its own timeout.
+# unnoticed and how closely a followed cube is answered, and it sits
+# where the stream reads its own timeout.
 TICK = 0.2
 
 # What is said when there is nowhere to put an icon. It names the
@@ -90,6 +92,15 @@ def build_parser(config: Config) -> ArgumentParser:
         ),
     )
     parser.add_argument(
+        '-a', '--auto',
+        action='store_true',
+        help=(
+            'Show the window on its own whenever a cube connects,\n'
+            'and take it away once the cube is gone.\n'
+            'Default: the window is shown by hand.'
+        ),
+    )
+    parser.add_argument(
         'cast_arguments',
         nargs='*',
         metavar='-- ARGUMENTS',
@@ -122,6 +133,7 @@ def build_tray(options: Namespace) -> CubeTray:
                 options.cast_arguments,
             ),
         ),
+        auto=options.auto,
     )
 
 
@@ -133,6 +145,13 @@ async def serve(tray: CubeTray) -> None:
     is the whole reason there is a state to compare: the gyroscope
     alone publishes tens of times a second, and an icon redrawn that
     often is an icon redrawn for nothing.
+
+    The link is read at every turn rather than in the stream, which is
+    what lets a followed cube show its window at all: the thread
+    reading the stream only ever writes down what it heard, the way it
+    hands a title to a window it may not touch, and this loop is what
+    acts on it. It is also the clock the delay of the blast is measured
+    against, and the only one this client has.
 
     Args:
         tray: What the icon shows, and what a click reaches.
@@ -156,6 +175,7 @@ async def serve(tray: CubeTray) -> None:
         await asyncio.sleep(TICK)
 
         tray.settle()
+        tray.follow(time.monotonic())
 
         if tray.state != shown:
             shown = tray.state

@@ -28,6 +28,9 @@ from term_timer_clients.tray.cast import TRANSPARENT_FLAG
 from term_timer_clients.tray.cast import Popup
 from term_timer_clients.tray.cast import cast_command
 from term_timer_clients.tray.cast import cast_program
+from term_timer_clients.tray.client import AUTO_ITEM
+from term_timer_clients.tray.client import AUTO_LABEL
+from term_timer_clients.tray.client import BLAST_DELAY
 from term_timer_clients.tray.client import FIRST_RULE_ITEM
 from term_timer_clients.tray.client import HIDE_LABEL
 from term_timer_clients.tray.client import QUIT_ITEM
@@ -50,8 +53,11 @@ from term_timer_clients.tray.icon import pixmap
 from term_timer_clients.tray.icon import pixmaps
 from term_timer_clients.tray.icon import shade
 from term_timer_clients.tray.icon import within
+from term_timer_clients.tray.item import CHECKMARK_TOGGLE
 from term_timer_clients.tray.item import LABEL_PROPERTY
 from term_timer_clients.tray.item import SEPARATOR_TYPE
+from term_timer_clients.tray.item import TOGGLE_STATE_PROPERTY
+from term_timer_clients.tray.item import TOGGLE_TYPE_PROPERTY
 from term_timer_clients.tray.item import TYPE_PROPERTY
 from term_timer_clients.tray.item import entry_properties
 from term_timer_clients.tray.item import item_service
@@ -654,6 +660,39 @@ class TrayMenuTestCase(unittest.TestCase):
         entries = {entry.identifier: entry for entry in self.tray.entries}
         self.assertEqual(entries[TOGGLE_ITEM].label, HIDE_LABEL)
 
+    def test_the_following_sits_under_the_gesture(self) -> None:
+        """What it changes is who clicks the line above it."""
+        identifiers = [entry.identifier for entry in self.tray.entries]
+
+        self.assertEqual(identifiers[:2], [TOGGLE_ITEM, AUTO_ITEM])
+
+    def test_the_following_is_a_box_and_says_one_thing(self) -> None:
+        """A standing answer is read as a box rather than as a verb."""
+        entries = {entry.identifier: entry for entry in self.tray.entries}
+        line = entries[AUTO_ITEM]
+
+        self.assertEqual(line.label, AUTO_LABEL)
+        self.assertFalse(line.checked)
+
+    def test_the_box_says_what_it_is_at(self) -> None:
+        """A box that never moved is a box that lies."""
+        self.tray.activate(AUTO_ITEM)
+
+        entries = {entry.identifier: entry for entry in self.tray.entries}
+
+        self.assertTrue(entries[AUTO_ITEM].checked)
+        self.assertTrue(self.tray.auto)
+
+    def test_no_other_line_is_a_box(self) -> None:
+        """A menu of boxes is a menu nothing is read off."""
+        boxes = [
+            entry.identifier
+            for entry in self.tray.entries
+            if entry.checked is not None
+        ]
+
+        self.assertEqual(boxes, [AUTO_ITEM])
+
     def test_the_menu_opens_the_window_too(self) -> None:
         """Some shells never send a plain click, so the menu carries it."""
         self.tray.activate(TOGGLE_ITEM)
@@ -675,6 +714,187 @@ class TrayMenuTestCase(unittest.TestCase):
 
         self.assertEqual(self.popup.opened, 0)
         self.assertFalse(self.tray.stopped)
+
+
+class TrayFollowTestCase(unittest.TestCase):
+    """The window brought where the cube is, and by whom."""
+
+    def setUp(self) -> None:
+        """Wire a tray following the cube, on a window that opens nothing."""
+        self.popup = StubPopup()
+        self.tray = CubeTray(self.popup, auto=True)
+
+    def connect(self) -> None:
+        """Have a cube talk, which is the whole of it saying it is there."""
+        self.tray.dispatch(envelope('cube.move', {'move': 'R'}))
+
+    def disconnect(self) -> None:
+        """Have the link drop, the one topic that says a cube is gone."""
+        self.tray.dispatch(
+            envelope('cube.link', {'connected': False, 'reason': 'lost'}),
+        )
+
+    def test_a_cube_that_connects_brings_its_window(self) -> None:
+        """The whole of what the following is asked for."""
+        self.connect()
+        self.tray.follow(0.0)
+
+        self.assertTrue(self.popup.shown)
+
+    def test_a_cube_that_connects_brings_nothing_unfollowed(self) -> None:
+        """A box that is not ticked is a window nobody but a hand opens."""
+        self.tray.auto = False
+
+        self.connect()
+        self.tray.follow(0.0)
+
+        self.assertFalse(self.popup.shown)
+
+    def test_a_cube_that_goes_on_talking_opens_nothing_again(self) -> None:
+        """What is followed is the transition and never the level."""
+        self.connect()
+        self.tray.follow(0.0)
+
+        self.tray.toggle()
+        self.connect()
+        self.tray.follow(1.0)
+
+        self.assertEqual(self.popup.opened, 1)
+
+    def test_a_cube_that_leaves_is_given_its_blast(self) -> None:
+        """The window is the one thing saying a cube went away."""
+        self.connect()
+        self.tray.follow(0.0)
+
+        self.disconnect()
+        self.tray.follow(1.0)
+
+        self.assertTrue(self.popup.shown)
+
+    def test_a_cube_that_left_takes_its_window_after_the_blast(self) -> None:
+        """The delay is a delay and not a reprieve."""
+        self.connect()
+        self.tray.follow(0.0)
+
+        self.disconnect()
+        self.tray.follow(1.0)
+        self.tray.follow(1.0 + BLAST_DELAY)
+
+        self.assertFalse(self.popup.shown)
+
+    def test_a_cube_that_comes_back_keeps_its_window(self) -> None:
+        """A blast that never happened is a window nothing takes away."""
+        self.connect()
+        self.tray.follow(0.0)
+
+        self.disconnect()
+        self.tray.follow(1.0)
+
+        self.connect()
+        self.tray.follow(1.1)
+        self.tray.follow(1.0 + BLAST_DELAY)
+
+        self.assertTrue(self.popup.shown)
+        self.assertEqual(self.popup.closed, 0)
+
+    def test_taking_the_window_away_leaves_the_cube_followed(self) -> None:
+        """
+        The automatic side never clears its own box.
+
+        A window hidden by the following that cleared the box on its
+        way out would be a following lasting exactly one cube.
+        """
+        self.connect()
+        self.tray.follow(0.0)
+
+        self.disconnect()
+        self.tray.follow(1.0)
+        self.tray.follow(1.0 + BLAST_DELAY)
+
+        self.assertTrue(self.tray.auto)
+
+    def test_a_following_that_survives_a_cube_answers_the_next(self) -> None:
+        """The box ticked once is the box ticked for every cube after."""
+        self.connect()
+        self.tray.follow(0.0)
+
+        self.disconnect()
+        self.tray.follow(1.0 + BLAST_DELAY)
+
+        self.connect()
+        self.tray.follow(2.0)
+
+        self.assertTrue(self.popup.shown)
+
+    def test_a_hand_on_the_window_stops_the_following(self) -> None:
+        """Whoever asks for a window by hand is deciding from now on."""
+        self.tray.toggle()
+
+        self.assertFalse(self.tray.auto)
+        self.assertTrue(self.popup.shown)
+
+    def test_a_window_taken_by_hand_is_not_given_back(self) -> None:
+        """A cube already there says nothing more for a window to answer."""
+        self.connect()
+        self.tray.follow(0.0)
+
+        self.tray.toggle()
+        self.tray.follow(1.0)
+
+        self.assertFalse(self.popup.shown)
+
+    def test_a_hand_in_the_blast_stops_the_window_going(self) -> None:
+        """A following that is over takes nothing away after it."""
+        self.connect()
+        self.tray.follow(0.0)
+
+        self.disconnect()
+        self.tray.follow(1.0)
+
+        self.tray.watch()
+        self.tray.follow(1.0 + BLAST_DELAY)
+
+        self.assertFalse(self.tray.auto)
+        self.assertEqual(self.popup.closed, 0)
+
+    def test_a_box_ticked_brings_the_window_at_once(self) -> None:
+        """A cube is plugged in far more often than it is unplugged."""
+        self.connect()
+        self.tray.toggle()
+
+        self.tray.watch()
+
+        self.assertTrue(self.tray.auto)
+        self.assertTrue(self.popup.shown)
+
+    def test_a_box_ticked_with_no_cube_takes_the_window(self) -> None:
+        """Following a cube that is not there is showing nothing."""
+        self.tray.toggle()
+
+        self.tray.watch()
+
+        self.assertTrue(self.tray.auto)
+        self.assertFalse(self.popup.shown)
+
+    def test_a_window_that_died_is_not_opened_again(self) -> None:
+        """A window that died once dies again, and a loop is not a client."""
+        self.connect()
+        self.tray.follow(0.0)
+
+        self.popup.gone = True
+        self.tray.settle()
+        self.tray.follow(1.0)
+
+        self.assertFalse(self.popup.shown)
+        self.assertEqual(self.popup.opened, 1)
+
+    def test_a_window_left_alone_is_left_alone(self) -> None:
+        """A stream saying nothing is a following with nothing to do."""
+        self.tray.follow(0.0)
+        self.tray.follow(1.0 + BLAST_DELAY)
+
+        self.assertEqual(self.popup.opened, 0)
+        self.assertEqual(self.popup.closed, 0)
 
 
 class TrayStateTestCase(unittest.TestCase):
@@ -719,6 +939,14 @@ class TrayStateTestCase(unittest.TestCase):
         before = self.tray.state
 
         self.tray.toggle()
+
+        self.assertNotEqual(self.tray.state, before)
+
+    def test_a_box_that_moves_writes_the_menu_again(self) -> None:
+        """A tick nothing signals is a tick nobody ever sees."""
+        before = self.tray.state
+
+        self.tray.activate(AUTO_ITEM)
 
         self.assertNotEqual(self.tray.state, before)
 
@@ -782,6 +1010,31 @@ class MenuPropertiesTestCase(unittest.TestCase):
 
         self.assertEqual(selected(properties, []), properties)
 
+    def test_a_box_says_it_is_one_and_says_where_it_stands(self) -> None:
+        """GNOME draws the tick off the state, and only where the type is."""
+        properties = entry_properties(self.entries[AUTO_ITEM])
+
+        self.assertEqual(
+            properties[TOGGLE_TYPE_PROPERTY].value, CHECKMARK_TOGGLE,
+        )
+        self.assertEqual(properties[TOGGLE_STATE_PROPERTY].value, 0)
+
+    def test_a_box_that_is_ticked_carries_the_tick(self) -> None:
+        """The one thing a shell reads to draw the ornament."""
+        self.tray.activate(AUTO_ITEM)
+        entries = {entry.identifier: entry for entry in self.tray.entries}
+
+        properties = entry_properties(entries[AUTO_ITEM])
+
+        self.assertEqual(properties[TOGGLE_STATE_PROPERTY].value, 1)
+
+    def test_a_line_that_is_no_box_carries_none(self) -> None:
+        """A cleared checkmark on every line indents the whole menu."""
+        properties = entry_properties(self.entries[STATUS_ITEM])
+
+        self.assertNotIn(TOGGLE_TYPE_PROPERTY, properties)
+        self.assertNotIn(TOGGLE_STATE_PROPERTY, properties)
+
     def test_the_icon_is_named_after_the_process_holding_it(self) -> None:
         """Two trays running at once must not collide on the bus."""
         self.assertIn(str(os.getpid()), item_service())
@@ -804,6 +1057,18 @@ class ParserTestCase(unittest.TestCase):
         options = self.parser.parse_args(['-e', 'ipc:///tmp/cube'])
 
         self.assertEqual(options.window_size, DEFAULT_POPUP_SIZE)
+
+    def test_the_window_is_shown_by_hand_unless_asked(self) -> None:
+        """A window nobody asked for is one nobody expected."""
+        options = self.parser.parse_args(['-e', 'ipc:///tmp/cube'])
+
+        self.assertFalse(options.auto)
+
+    def test_the_cube_is_followed_when_it_is_asked_for(self) -> None:
+        """What the flag buys, and the only thing it does on its own."""
+        options = self.parser.parse_args(['-e', 'ipc:///tmp/cube', '--auto'])
+
+        self.assertTrue(entry.build_tray(options).auto)
 
     def test_what_follows_two_dashes_is_for_the_window(self) -> None:
         """The window is argued with where it is documented."""

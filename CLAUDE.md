@@ -334,6 +334,46 @@ Three layers, and the boundaries between them are the point:
   under it cannot be aimed at, and a placement guessed at is a window
   landing somewhere else on the next screen. `Ctrl` drag carries it,
   and a window hidden rather than closed comes back where it was left.
+  **Following a cube is not a state of that window**, and it is what
+  lets `--auto` be a checkbox next to the gesture rather than a third
+  word inside it: `popup.shown` says whether the window is up, `auto`
+  says who is putting it there, and two lines answering two questions
+  never contradict each other the way one line with three states
+  would. What is followed is the **transition** of the link and never
+  its level — a cube that is there says so tens of times a second, and
+  a window shown on each of them is a window shown for nothing — which
+  is also what leaves a hand free in between: shown and hidden by
+  clicks that the next arrival or departure simply overrides. What it
+  does not survive is that hand. `toggle()` clears the box, because a
+  window asked for by a click is a window somebody is deciding about
+  and a box left ticked over one the cube is about to take back is a
+  box that lied; and it is exactly why **the automatic side never goes
+  through `toggle()`** — a following that cleared its own box on the
+  way out would last one single cube. A departure is answered
+  `BLAST_DELAY` late, and that is the one number here that is about
+  the *other* client: `cube-cast` blows the cube apart when the link
+  drops, and that blast is the whole of what a window has to say about
+  a cube that is gone, so hiding on the very message that ended the
+  link hides the one picture worth showing. It is written above the
+  animation rather than imported from it — reaching into the viewer
+  for a duration would drag cubing-algs and an OpenGL stack into a
+  process that draws twenty-two pixels. The link is read in `follow()`
+  at the turn of the loop and never in the stream, the arrangement
+  every thread boundary of this repository is made of, and the clock
+  is **handed to it** rather than read inside it: a delay measured by
+  the caller is one the suite walks through instead of waiting out.
+  Nothing is ever reopened by `settle()`, whatever the box says — a
+  window that died once dies again, and a following answering its
+  death by opening it back is a loop rather than a client.
+  The box is `toggle-type` and `toggle-state` on the wire, and those
+  two are the reason to read `dbusMenu.js` again rather than guess:
+  GNOME draws the tick off the state and only where the type says
+  there is one, and it redraws it on either of them arriving — so the
+  tick travels in `ItemsPropertiesUpdated` like the labels do, which
+  is the same rule that was learned the hard way there. `checked` is
+  `None` and not `False` on every other line, what is not sent being
+  what a shell draws with its own defaults: a cleared checkmark on
+  each of them indents the whole menu behind a column of nothing.
   The same split as `tail/` runs through it: `icon.py` draws and
   touches no bus, `client.py` decides what the icon says and what a
   click does and touches neither bus nor process, `cast.py` is the only

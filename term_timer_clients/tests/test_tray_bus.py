@@ -43,6 +43,7 @@ from term_timer_clients.tray.bus import follow_watcher
 from term_timer_clients.tray.bus import open_bus
 from term_timer_clients.tray.bus import publish
 from term_timer_clients.tray.bus import register
+from term_timer_clients.tray.client import AUTO_ITEM
 from term_timer_clients.tray.client import HIDE_LABEL
 from term_timer_clients.tray.client import QUIT_ITEM
 from term_timer_clients.tray.client import SHOW_LABEL
@@ -53,6 +54,7 @@ from term_timer_clients.tray.client import TRAY_CONNECTED
 from term_timer_clients.tray.client import TRAY_OFFLINE
 from term_timer_clients.tray.client import TRAY_TITLE
 from term_timer_clients.tray.client import CubeTray
+from term_timer_clients.tray.item import CHECKMARK_TOGGLE
 from term_timer_clients.tray.item import CLICKED_EVENT
 from term_timer_clients.tray.item import ITEM_ID
 from term_timer_clients.tray.item import ITEM_INTERFACE
@@ -61,6 +63,8 @@ from term_timer_clients.tray.item import LABEL_PROPERTY
 from term_timer_clients.tray.item import MENU_INTERFACE
 from term_timer_clients.tray.item import MENU_PATH
 from term_timer_clients.tray.item import MENU_ROOT
+from term_timer_clients.tray.item import TOGGLE_STATE_PROPERTY
+from term_timer_clients.tray.item import TOGGLE_TYPE_PROPERTY
 from term_timer_clients.tray.item import TYPE_PROPERTY
 from term_timer_clients.tray.item import WATCHER_PATH
 from term_timer_clients.tray.item import WATCHER_SERVICE
@@ -83,7 +87,7 @@ GET_MEMBER = 'Get'
 # How many lines the menu offers with no cube connected, the footer
 # of the state and the source left out. The suite asserts on the
 # layout as a shell reads it, so it counts what a shell would draw.
-MENU_LINES = 3
+MENU_LINES = 4
 
 REGISTER_MEMBER = 'RegisterStatusNotifierItem'
 
@@ -543,6 +547,33 @@ class MenuLayoutTestCase(ItemTestCase):
 
         self.assertEqual(properties[LABEL_PROPERTY].value, SHOW_LABEL)
 
+    async def test_the_box_travels_as_a_box(self) -> None:
+        """
+        The two properties a shell draws a tick off, read as it reads them.
+
+        Neither can be asserted anywhere else: a ``@method()`` of
+        dbus-next hands back nothing when it is called by hand, and
+        what has to be true here is what comes back over the bus.
+        """
+        children = await self.layout()
+
+        lines = {child.value[0]: child.value[1] for child in children}
+        properties = lines[AUTO_ITEM]
+
+        self.assertEqual(
+            properties[TOGGLE_TYPE_PROPERTY].value, CHECKMARK_TOGGLE,
+        )
+        self.assertEqual(properties[TOGGLE_STATE_PROPERTY].value, 0)
+
+    async def test_a_line_that_is_no_box_carries_no_tick(self) -> None:
+        """A column of cleared checkmarks is a menu indented for nothing."""
+        children = await self.layout()
+
+        lines = {child.value[0]: child.value[1] for child in children}
+
+        self.assertNotIn(TOGGLE_TYPE_PROPERTY, lines[TOGGLE_ITEM])
+        self.assertNotIn(TOGGLE_STATE_PROPERTY, lines[TOGGLE_ITEM])
+
     async def test_a_disconnected_cube_has_no_footer(self) -> None:
         """Nothing to read is nothing sent over the bus either."""
         children = await self.layout()
@@ -756,6 +787,33 @@ class SignalTestCase(ItemTestCase):
 
         self.assertEqual(said[TOGGLE_ITEM], HIDE_LABEL)
         self.assertEqual(said[STATUS_ITEM], TRAY_CONNECTED)
+
+    async def test_a_shell_is_handed_the_tick_the_box_now_wears(
+            self,
+    ) -> None:
+        """
+        The state of the box itself, and not merely that it moved.
+
+        The tray of GNOME redraws the ornament of a line when it is
+        handed ``toggle-state`` and never when it is handed a revision:
+        **anything added to a line of this menu has to travel in this
+        signal or it will not be seen to change.**
+        """
+        caught = await self.catch(MENU_PATH, MENU_INTERFACE)
+
+        self.tray.watch()
+        self.menu.refresh()
+
+        signal = await self.sent(caught, 'ItemsPropertiesUpdated')
+        changed, _removed = signal.body
+
+        ticks = {
+            identifier: properties[TOGGLE_STATE_PROPERTY].value
+            for identifier, properties in changed
+            if TOGGLE_STATE_PROPERTY in properties
+        }
+
+        self.assertEqual(ticks, {AUTO_ITEM: 1})
 
 
 class AskingTestCase(ItemTestCase):

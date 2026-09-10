@@ -98,6 +98,17 @@ TYPE_PROPERTY = 'type'
 
 SEPARATOR_TYPE = 'separator'
 
+# What makes a line a checkbox, and what it stands at. Both travel or
+# neither is seen: the tray of GNOME draws the tick off `toggle-state`
+# and only where `toggle-type` says there is one to draw, and it
+# redraws it on either of them moving - which is what makes the box a
+# thing `ItemsPropertiesUpdated` can move at all.
+TOGGLE_TYPE_PROPERTY = 'toggle-type'
+
+TOGGLE_STATE_PROPERTY = 'toggle-state'
+
+CHECKMARK_TOGGLE = 'checkmark'
+
 CLICKED_EVENT = 'clicked'
 
 ICON_PIXMAP_PROPERTY = 'IconPixmap'
@@ -121,11 +132,17 @@ def entry_properties(entry: MenuEntry) -> dict[str, Variant]:
     if entry.separator:
         return {TYPE_PROPERTY: Variant('s', SEPARATOR_TYPE)}
 
-    return {
+    properties = {
         LABEL_PROPERTY: Variant('s', entry.label),
         ENABLED_PROPERTY: Variant('b', entry.enabled),
         VISIBLE_PROPERTY: Variant('b', True),
     }
+
+    if entry.checked is not None:
+        properties[TOGGLE_TYPE_PROPERTY] = Variant('s', CHECKMARK_TOGGLE)
+        properties[TOGGLE_STATE_PROPERTY] = Variant('i', int(entry.checked))
+
+    return properties
 
 
 def selected(
