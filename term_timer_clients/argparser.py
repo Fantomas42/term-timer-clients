@@ -11,6 +11,13 @@ LOG_FORMAT = '%(levelname)s: %(message)s'
 # What separates the two halves of a size, as every client writes it.
 SIZE_SEPARATOR = 'x'
 
+# How big a window opens when nothing asked for another size. It is
+# here rather than in the client that opens one because a client
+# *driving* another one hands it that size on a command line: two
+# defaults would be a popup opening at one size and the very same
+# client, run by hand, at another.
+DEFAULT_WINDOW_SIZE = (400, 300)
+
 
 def parse_stream_endpoint(value: str) -> str:
     """

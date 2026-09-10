@@ -16,6 +16,7 @@ from cubing_algs.display.rotation import rotation_argument
 from cubing_algs.exceptions import CubingAlgsError
 from cubing_algs.vcube import VCube
 
+from term_timer_clients.argparser import DEFAULT_WINDOW_SIZE
 from term_timer_clients.argparser import LOG_FORMAT
 from term_timer_clients.argparser import ArgumentParser
 from term_timer_clients.argparser import add_endpoint_argument
@@ -36,8 +37,6 @@ from term_timer_clients.viewer.framing import Framing
 from term_timer_clients.viewer.host import CubeCastHost
 
 logger = logging.getLogger(__name__)
-
-DEFAULT_WINDOW_SIZE = (400, 300)
 
 # Read from the configuration of term-timer, under the very keys the
 # session it listens to is displayed with: a window opened next to a

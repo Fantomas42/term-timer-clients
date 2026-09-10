@@ -16,13 +16,13 @@ from contextlib import contextmanager
 from unittest.mock import MagicMock
 from unittest.mock import patch
 
+from term_timer_clients.argparser import DEFAULT_WINDOW_SIZE
 from term_timer_clients.orders import HIDE_ORDER
 from term_timer_clients.orders import SHOW_ORDER
 from term_timer_clients.tests.fixtures import envelope
 from term_timer_clients.tray import main as entry
 from term_timer_clients.tray.bus import BusError
 from term_timer_clients.tray.cast import CLOSING_TIMEOUT
-from term_timer_clients.tray.cast import DEFAULT_POPUP_SIZE
 from term_timer_clients.tray.cast import MANAGED_FLAG
 from term_timer_clients.tray.cast import TRANSPARENT_FLAG
 from term_timer_clients.tray.cast import Popup
@@ -313,7 +313,7 @@ class CastCommandTestCase(unittest.TestCase):
         """A popup is a window with no bar, floating over the rest."""
         self.assertIn(
             TRANSPARENT_FLAG,
-            cast_command('ipc:///tmp/cube', DEFAULT_POPUP_SIZE),
+            cast_command('ipc:///tmp/cube', DEFAULT_WINDOW_SIZE),
         )
 
     def test_what_was_typed_comes_last(self) -> None:
@@ -1056,7 +1056,7 @@ class ParserTestCase(unittest.TestCase):
         """A popup is glanced at, not worked in."""
         options = self.parser.parse_args(['-e', 'ipc:///tmp/cube'])
 
-        self.assertEqual(options.window_size, DEFAULT_POPUP_SIZE)
+        self.assertEqual(options.window_size, DEFAULT_WINDOW_SIZE)
 
     def test_the_window_is_shown_by_hand_unless_asked(self) -> None:
         """A window nobody asked for is one nobody expected."""

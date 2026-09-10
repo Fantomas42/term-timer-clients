@@ -5,6 +5,7 @@ import sys
 import time
 from argparse import Namespace
 
+from term_timer_clients.argparser import DEFAULT_WINDOW_SIZE
 from term_timer_clients.argparser import LOG_FORMAT
 from term_timer_clients.argparser import ArgumentParser
 from term_timer_clients.argparser import add_endpoint_argument
@@ -22,7 +23,6 @@ from term_timer_clients.tray.bus import follow_watcher
 from term_timer_clients.tray.bus import open_bus
 from term_timer_clients.tray.bus import publish
 from term_timer_clients.tray.bus import register
-from term_timer_clients.tray.cast import DEFAULT_POPUP_SIZE
 from term_timer_clients.tray.cast import Popup
 from term_timer_clients.tray.cast import cast_command
 from term_timer_clients.tray.client import CubeTray
@@ -84,11 +84,11 @@ def build_parser(config: Config) -> ArgumentParser:
     parser.add_argument(
         '-w', '--window-size',
         type=parse_size,
-        default=DEFAULT_POPUP_SIZE,
+        default=DEFAULT_WINDOW_SIZE,
         metavar='WIDTHxHEIGHT',
         help=(
             'Set the size of the window a click opens.\n'
-            f'Default: { write_size(DEFAULT_POPUP_SIZE) }.'
+            f'Default: { write_size(DEFAULT_WINDOW_SIZE) }.'
         ),
     )
     parser.add_argument(

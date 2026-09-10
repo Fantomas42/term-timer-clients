@@ -7,6 +7,7 @@ from collections.abc import Sequence
 from contextlib import suppress
 from pathlib import Path
 
+from term_timer_clients.argparser import write_size
 from term_timer_clients.orders import HIDE_ORDER
 from term_timer_clients.orders import SHOW_ORDER
 from term_timer_clients.orders import write_order
@@ -32,14 +33,11 @@ MANAGED_FLAG = '--managed'
 
 ENDPOINT_FLAG = '--endpoint'
 
+# How big the cube is glanced at is `DEFAULT_WINDOW_SIZE` and nothing
+# of this client's own: the window it opens is `cube-cast`, and a popup
+# sized here would be the same client showing the same cube at two
+# sizes depending on which one opened it.
 WINDOW_SIZE_FLAG = '--window-size'
-
-# How small the cube is glanced at. A popup is looked at over whatever
-# it was opened above, and a window big enough to work in is one that
-# covers it: the working window is `cube-cast` itself, one command away.
-DEFAULT_POPUP_SIZE = (280, 280)
-
-SIZE_SEPARATOR = 'x'
 
 # How long a window is given to close itself before it is taken down.
 # It is asked by the end of its pipe, which is the last of the three
@@ -94,14 +92,12 @@ def cast_command(
         The command, ready to be run.
 
     """
-    width, height = size
-
     return [
         program or cast_program(),
         ENDPOINT_FLAG, endpoint,
         TRANSPARENT_FLAG,
         MANAGED_FLAG,
-        WINDOW_SIZE_FLAG, f'{ width }{ SIZE_SEPARATOR }{ height }',
+        WINDOW_SIZE_FLAG, write_size(size),
         *extra,
     ]
 

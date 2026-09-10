@@ -684,7 +684,13 @@ stream by the same option with the same help rather than by a copy of
 it that will drift. `parse_size()` and `write_size()` are there for
 the same reason and are a pair on purpose — `cube-tray` writes the
 size that `cube-cast` reads, and one notation spelled in two places is
-one that will be spelled two ways. `orders.py` is the third of these,
+one that will be spelled two ways. `DEFAULT_WINDOW_SIZE` is there for
+the reason the notation is: the window a click opens *is* `cube-cast`,
+so a size of its own in `tray/` would be one client showing the same
+cube at two sizes depending on which one opened it — and the client
+that draws the window cannot be the one holding it, an OpenGL stack
+being what importing it costs a process that draws twenty-two pixels.
+`orders.py` is the third of these,
 for a client that *drives* another one rather than merely reading the
 same stream: `write_order()` and `read_orders()` are the two sides of
 one word, and they are in one file for the reason both ends of an
