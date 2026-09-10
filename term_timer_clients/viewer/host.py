@@ -186,6 +186,13 @@ class CubeCastHost(GlfwHost):
         self.visible = False
         self.shortcuts = MANAGED_SHORTCUTS
 
+        # A managed window shows itself on its own cadence - the tray
+        # following a link rather than a click - so its ``show()`` must
+        # not drag the keyboard away from whatever the desk was doing:
+        # a cube appearing to say a link came up is not a cube asking
+        # to be typed into.
+        self.focus_on_show = False
+
     def order(self, order: str) -> None:
         """
         Write down what was just asked of the window.
