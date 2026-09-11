@@ -93,11 +93,11 @@ def build_parser(config: Config) -> ArgumentParser:
     )
     parser.add_argument(
         '-a', '--auto',
-        action='store_true',
+        action='store_false',
         help=(
             'Show the window on its own whenever a cube connects,\n'
             'and take it away once the cube is gone.\n'
-            'Default: the window is shown by hand.'
+            'Default: the window is shown on connection.'
         ),
     )
     parser.add_argument(

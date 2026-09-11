@@ -65,8 +65,11 @@ QUIT_LABEL = 'Quit'
 # than as an import - reaching into the viewer for it would drag
 # cubing-algs and an OpenGL stack into a process that draws an icon -
 # so it is written above the blast rather than on it, and nothing
-# breaks the day the animation is retimed.
-BLAST_DELAY = 1.0
+# breaks the day the animation is retimed. Above it by a frame and no
+# more: what exceeds the blast is a graphite core breathing in a window
+# that is about to be taken away, which says nothing about the cube
+# that left and delays the only thing the gesture is waited on for.
+BLAST_DELAY = 0.8
 
 
 @dataclass(frozen=True, slots=True)

@@ -116,6 +116,18 @@ cube to show up cannot tell a recording from hardware. Fields a given
 cube does not report are simply absent: a client reads what it needs
 and ignores the rest.
 
+The two ways a link ends are told apart by the moment as much as by the
+word: `closed` is a decision and `lost` is an observation, so `closed`
+is published **where the application lets the cube go** and not where
+the radio acknowledges it. Cutting a bluetooth link takes seconds — two
+to three on a healthy BlueZ, ten on a cube that has stopped answering —
+and they are seconds during which nothing else is published at all, so
+a publisher waiting them out leaves every subscriber showing a live
+cube nobody is turning any more. It is published after the
+notifications are stopped all the same: nothing of the `cube.*` plane
+may follow the word saying the cube is gone, a client reading the cube
+talking at all as the cube being there.
+
 `cube.reset` is the one topic that answers an order rather than
 reporting a fact, and the only order that changes the cube instead of
 questioning it: it declares the cube solved. Its `result` is published
