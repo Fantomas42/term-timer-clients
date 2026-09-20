@@ -1,0 +1,36 @@
+[Unit]
+Description=cube-tray - the term-timer cube in the bar
+Documentation=file://__ROOT__/README.md
+
+# The session and nothing else. The icon is registered on the bus of
+# the session and the window it holds is on the display of that
+# session, and both are what gnome-session hands the user manager
+# before this target is reached - a service on default.target would be
+# asked for while neither exists. PartOf is the other half of it: the
+# end of the pipe closes the window, and a logout is one.
+PartOf=graphical-session.target
+After=graphical-session.target
+
+# The tray of a desktop is not a service anything can wait for - on
+# GNOME it is an extension of the shell rather than a unit - so the
+# icon is asked for while there is still nowhere to put it, and the
+# client says so and stops rather than running with nothing to show.
+# Started again until the bar is up, five tries in ten seconds being
+# shorter than a session with a disk to wake up.
+StartLimitIntervalSec=120
+StartLimitBurst=20
+
+[Service]
+Type=simple
+WorkingDirectory=__ROOT__
+Environment=PYTHONUNBUFFERED=1
+ExecStart=__PROGRAM__ __ARGUMENTS__
+Restart=on-failure
+RestartSec=3
+
+# Where an application of the session belongs, next to the others
+# rather than among the services the session itself is made of.
+Slice=app.slice
+
+[Install]
+WantedBy=graphical-session.target

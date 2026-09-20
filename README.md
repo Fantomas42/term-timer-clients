@@ -461,6 +461,47 @@ with nothing to show.
 Usage: cube-tray [-h] [-e ENDPOINT] [-w WIDTHxHEIGHT] [-- ARGUMENTS ...]
 ```
 
+## Starting cube-tray with the session
+
+An icon is watched all day and started once, which is a session rather
+than a terminal. `deploy/` holds the systemd user unit it is started
+by, and `deploy/install.sh` is what stamps this machine into it — the
+file that is versioned names no path at all, which is the whole of why
+it can be versioned:
+
+```bash
+deploy/install.sh
+CUBE_TRAY_ARGUMENTS='-w 320x320 -- --palette rgb' deploy/install.sh
+```
+
+The client next to the checkout wins over the one on the `PATH`, for
+the reason the window is looked for beside the interpreter: a tray
+installed in a virtualenv shows the cube of that virtualenv, where the
+`PATH` may well name an older one.
+
+It is wanted by `graphical-session.target` and **not** by
+`default.target`: the icon is registered on the bus of the session and
+the window it holds is on the display of that session, neither of
+which exists before gnome-session hands them to the user manager.
+`PartOf=` is the other half of the same sentence — the end of the pipe
+is what closes the window, and a logout is one.
+
+**It is started again when it fails, and that is not a nicety**: the
+tray of a desktop is not a unit anything can wait for — on GNOME it is
+an extension of the shell — so the icon is asked for while there is
+still nowhere to put it, and the client says so and stops. Five tries
+in ten seconds, which is what systemd gives by default, is shorter
+than a session with a disk to wake up, and `StartLimitBurst` is what
+buys the rest.
+
+What the client says is read where the session writes everything else:
+
+```bash
+journalctl --user -u cube-tray -f
+systemctl --user restart cube-tray.service
+systemctl --user disable --now cube-tray.service
+```
+
 ## Writing another client
 
 Everything a client needs is in [PROTOCOL.md](PROTOCOL.md), and a
