@@ -29,6 +29,8 @@ from term_timer_clients.config import load_config
 from term_timer_clients.orders import OrderReader
 from term_timer_clients.protocol import CUBE_PREFIX
 from term_timer_clients.protocol import SESSION_END_TOPIC
+from term_timer_clients.protocol import SESSION_STATE_TOPIC
+from term_timer_clients.protocol import SESSION_TRAIN_TOPIC
 from term_timer_clients.protocol import EventStream
 from term_timer_clients.viewer.client import CubeCast
 from term_timer_clients.viewer.framing import DEFAULT_VIEW
@@ -96,12 +98,21 @@ MILLISECONDS = 1000.0
 # to on Space, the viewer reframing on the rotation it holds.
 DEFAULT_ROTATION = ''
 
-# The hardware plane, and the one message of the other one a window has
-# any use for: a stream that is over describes no cube any more, and a
-# viewer that never heard of its end would keep showing the cube of a
-# session nobody is publishing. Everything else term-timer knows alone
-# stays on the wire.
-PREFIXES = (CUBE_PREFIX, SESSION_END_TOPIC)
+# The hardware plane, and the three messages of the other one a
+# window has any use for: a stream that is over describes no cube any
+# more, and a viewer that never heard of its end would keep showing
+# the cube of a session nobody is publishing; what the session says it
+# is doing is what tells a solve landing from a cube being fiddled
+# with, the cube itself reporting the very same solved state either
+# way; and an attempt on a trained case is a piece of news the cube
+# cannot tell at all, a drilled case ending solved whether or not it
+# came out. Everything else term-timer knows alone stays on the wire.
+PREFIXES = (
+    CUBE_PREFIX,
+    SESSION_STATE_TOPIC,
+    SESSION_TRAIN_TOPIC,
+    SESSION_END_TOPIC,
+)
 
 
 def configured_choice(

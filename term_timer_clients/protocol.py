@@ -40,6 +40,25 @@ SESSION_PREFIX: Final = 'session.'
 # the whole session plane with it.
 SESSION_END_TOPIC: Final = 'session.end'
 
+# What term-timer says a solve is doing, and the one other topic of
+# the plane a window has a use for: a cube that reports itself solved
+# says so whenever it happens to be solved - scrambling and idle
+# fiddling included - so what tells a solve landing from a cube being
+# fiddled with is the state the session is in. A complete topic name
+# filters as well as a plane does here too, and the rest of what
+# term-timer knows alone stays on the wire.
+SESSION_STATE_TOPIC: Final = 'session.state'
+
+# What term-timer says of an exercise that is over, and the third
+# topic of the plane a window has a use for: a training session ends
+# its attempts on a case rather than on a solve, and this is the only
+# message saying one happened and whether it was worth anything. What
+# a window has to do with it is say so, which is the whole reason it
+# is subscribed to. A complete topic name filters as well as a plane
+# does here as it does above, and the rest of what term-timer knows
+# alone stays on the wire.
+SESSION_TRAIN_TOPIC: Final = 'session.train'
+
 
 def parse_endpoint(token: str) -> str:
     """

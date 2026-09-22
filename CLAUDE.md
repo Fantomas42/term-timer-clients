@@ -256,6 +256,117 @@ Three layers, and the boundaries between them are the point:
   divided by `PULSE_PERIOD`, and it has its own counter for that
   reason: one clock shared would either lock the breath and the turn
   into a single beat or jump one of them at the wrap.
+- **`viewer/flare.py`** — the four pieces of news a window tells about
+  itself, and the only thing `cube-cast` says beyond whether a cube is
+  there: a **breath** — the pieces part briefly on their own rays while
+  the light rises and the cube takes a color — played on a scramble
+  being laid, on a solve landing, and on either end of an attempt on a
+  trained case: cold blue for the first, warm amber for the second,
+  violet and crimson for the two ends of the third. Written in the
+  shape of `assembly.py` for the reason it shares its arithmetic: a
+  scene comes in and a scene comes out, its pieces moved, and nothing
+  here touches a viewer or a window.
+  **No protocol changed for any of it.** Every topic already exists
+  and is already published; what changed is the list `cube-cast`
+  subscribes to. Two constraints decide the shape of the first two,
+  and neither is a taste. **`cube.solved` is noisy by contract** —
+  `PROTOCOL.md` says a GAN republishes it every time the cube happens to
+  be solved, "scrambling and idle fiddling included — nine times in one
+  session" — so it is read **through `session.state`** and honored only
+  in `SOLVING_STATES`, the states where a cube saying it is solved is a
+  cube somebody was solving. The three and not `solving` alone: nothing
+  orders the `stop` term-timer publishes against the `solved` the cube
+  publishes — one crosses a bluetooth link and the other does not — and
+  both orders have to land. And **`scrambled` has no `cube.*` topic at
+  all**, being a value of `session.state`, which is why that whole
+  topic name joins `session.end` in the prefixes. A `cube.solved`
+  arriving while **no session has ever spoken** is honored, and that is
+  a decision rather than an oversight: it is the rule a client lives by
+  — ignore what you do not know — read on the permissive side, and it
+  is what keeps the effect visible under `bt-info` and under
+  `publishers/realistic_cube.py`, which publishes `cube.solved` and, by
+  contract, nothing of the session plane. Without it the breath would
+  only ever be settled with a real term-timer session at hand.
+  A **training session says it another way**, and that is the whole of
+  the third and fourth: under `src == 'train'` — the source
+  `CubeLink` writes down off the envelope *before* the handler is
+  called — `cube.solved` says nothing at all, and `session.train` is
+  what the window answers instead. A drilled case ends on a solved
+  cube whether or not the case came out, so the solved state is a
+  consequence there rather than a piece of news, and the attempt is
+  the only thing knowing which case it was and whether it was worth
+  anything; **two breaths for one attempt would be the window
+  stuttering**. The topic publishes *every* attempt that was executed,
+  a DNF and a free play run included, so a failure is a flavour of its
+  own rather than a silence — a piece of news is a piece of news, and
+  two outcomes are two flavours, which is the very shape `FLARES` has.
+  Only `dnf` is read of the payload — what the rating, the state, the
+  due date and the free play flag say is what the training file keeps
+  — and an absent or unreadable one is read as *not* a DNF, the
+  permissive side `celebrate()` is already written on. **The violet
+  and the crimson are neighbours on the wheel where the amber and the
+  blue are opposites**, and that is the argument rather than what was
+  left of it: the two ends of one attempt read as two versions of a
+  thing, where the start and the end of a solve read as two things —
+  a DNF is not the contrary of a case landed, it is its other end.
+  What makes the failure dull is its **`glow`**, the lowest of the
+  four, rather than merely the shortest breath: the rim barely rises,
+  so the cube gives a start instead of lighting up: a miss is told,
+  never announced. Its reach and its tumble stay under everything else
+  for the reason `WAVEFRONT` documents — the shells keep their order
+  for any reach at or under one, and a piece of news one regrets does
+  not open the cube.
+  **The color travels on the plastic and on the core, never on the
+  stickers**: `Scene.plastic` tints the edges, the chamfers and the
+  grooves of every piece, `Look.core_color` tints the ball the gust
+  uncovers by parting them, and the fifty-four facelets keep exactly
+  what their palette gives them. That is the principle cubing-algs is
+  built on — the color of a cube is what one reads to know where it
+  stands, and a client moving it for the length of an animation makes
+  the window lie about the state of the cube. Both channels are
+  uniforms, and the instance buffer is being re-uploaded anyway while
+  the pieces move, so neither costs anything. `swell()` is the curve,
+  read in two around `ATTACK_SHARE`: a smoothstep over the first
+  quarter and the same one backwards over the rest — **exactly zero at
+  both ends and exactly one at the top**, which is what makes the
+  return to rest an equality rather than an approach. A sharp attack
+  and a long fall, because what is told is news and news arrives; an
+  even swell in and out beats like a metronome, which is the shape a
+  *wait* is already drawn with next door. `Flare` is the flavour, and
+  the only thing the two differ by — duration, reach, tumble, the `hue`
+  they carry (named so rather than `tint`, which is already the method
+  an effect paints a look by here) and the `glow` they are told with.
+  Everything else is the breath itself and is shared, two
+  announcements made in two shapes being two effects rather than one
+  word said twice. `FLARES` maps every word `CubeCast` writes down
+  to the flavour the host plays, and **both sides live in this file**
+  for the reason `orders.py` holds both sides of an order. `Gust` is the
+  frame of one moment, the counterpart of `Flight`: **a piece only ever
+  travels its own ray**, shells handed their turn by their distance to
+  the core as `SHOCKWAVE` does it, and the `Mat4` composed exactly as
+  `Flight.place()` composes it — the push around the model, the tumble
+  inside it. It is also what lets the two effects be **composed at
+  all**: the assembly places the pieces and the breath pushes them out
+  from where they stand, both along the very same ray, so a solve
+  landing in the middle of an implosion adds to it without a piece ever
+  meeting another. Nothing is scaled, unlike the blast: a piece pushed
+  a third of its own radius never comes near enough the camera to loom,
+  and pieces shrinking as they part would read as a cube going away.
+  `tint()` is one `look.blended(flared(look), swell)` and never one mix
+  per knob — the very argument `dormant()` is written on: the flavour
+  describes a look built **on the one it is handed**, so the two differ
+  by the terms that move and a knob added upstream travels without a
+  line written here. It is the **rim** that rises and nothing else, for
+  the reason the breath of a waiting core is spent on the rim: it
+  multiplies the color, where the highlight is added on top and added
+  white — a sheen swelling over the cube glows the color of the lamp
+  and washes the palette out. **The idle contract is the hard
+  constraint**: outside a breath `apply()` hands the scene back
+  `is`-identical and `tint()` the look `is`-identical. The renderer
+  recognizes a scene by identity and skips its instance upload, and
+  that is the state the window spends its life in — which is why
+  `BurstTestCase` and `FlareTintTestCase` assert it with `assertIs`,
+  as `AssemblyTestCase` and `CoreTintTestCase` already do.
 - **`tail/client.py` / `tail/render.py` / `tail/ansi.py`** — `tt-tail`,
   the stream read out loud. `StreamTail` holds no cube and imports
   nothing of cubing-algs: what arrives is what is shown, and the only
@@ -701,9 +812,14 @@ A client subscribes to the prefixes it needs (`CUBE_PREFIX`,
 name is a prefix of another, which is why the move catch-up is
 `cube.history` and not
 `cube.move_history`. A whole topic name filters just as well, which is
-what `cube-cast` subscribes with: `SESSION_END_TOPIC` next to the cube
-plane, the one message of the session plane a window has any use for,
-and the rest of what term-timer knows alone stays on the wire.
+what `cube-cast` subscribes with: `SESSION_END_TOPIC` and
+`SESSION_STATE_TOPIC` and `SESSION_TRAIN_TOPIC` next to the cube
+plane, the three messages of the session plane a window has any use
+for — the end of the stream, what the session says it is doing, which
+is the only thing telling a solve landing from a cube being fiddled
+with, and an attempt on a trained case, which is the one thing a cube
+ending every case solved can never tell — and the rest of what
+term-timer knows alone stays on the wire.
 
 ## Publishers
 
@@ -730,6 +846,38 @@ than merely falling silent. It publishes the `cube.*` plane and
 nothing else — the plane a cube produces by itself, and the whole of
 what a script with no session behind it can honestly say; what only
 term-timer knows waits for a publisher of its own.
+
+`flare_cube.py` is that publisher, and it is there because two of them
+cannot bind the same endpoint: settling the breaths of
+`viewer/flare.py` takes a script saying **both planes at once**, and
+nothing else here says the session one. It rehearses no honest attempt
+— `realistic_cube.py` already does that for the cube plane — it
+**replays the moments in a loop**, which is what a duration, a
+reach, a curve and four hues are settled with: `scrambling`, the
+scramble published as facelets, `scrambled`, the moves putting it back
+together, then `cube.solved` and `stop`. The solve is the **inverse**
+of the scramble, so the cube truly is solved when it says so — a bench
+announcing a solve on a cube that is not one would be settling the
+effect on a lie — and `cube.solved` is published **before** the `stop`
+that follows it, that being the order a window has the least to go on
+and therefore the one that has to work. It follows the conventions of
+the directory that `phantom_cube.py` carries in its header: outside
+`term_timer_clients`, outside `[project.scripts]`, nothing imports it
+and **nothing tests it**, what it is worth being read in the window it
+opens. Each pause is an argument of its own, `sid` is drawn at every
+run, and Ctrl+C drops the link rather than falling silent. `--train`
+is the other half of it: every envelope goes out under `src='train'`,
+the cycle ends on a `session.train` **whose `dnf` alternates from one
+turn to the next** — which is what puts the two ends of an attempt
+side by side the way the two breaths of a solve already are — and
+`cube.solved` goes on being published there, that being precisely
+what one has to watch the window **not** answer. `--trained` is the
+pause of its own that moment takes, in `Pauses` like the five others,
+and without the flag the bench is exactly the one it was.
+`realistic_cube.py` stays the second bench, and it is the one case
+`flare_cube.py` cannot show: it publishes `cube.solved` with no
+`session.state` anywhere, which is exactly the session that never
+spoke.
 
 ## Deployment
 

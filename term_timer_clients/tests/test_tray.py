@@ -1058,17 +1058,19 @@ class ParserTestCase(unittest.TestCase):
 
         self.assertEqual(options.window_size, DEFAULT_WINDOW_SIZE)
 
-    def test_the_window_is_shown_by_hand_unless_asked(self) -> None:
-        """A window nobody asked for is one nobody expected."""
+    def test_the_cube_is_followed_by_default(self) -> None:
+        """A window nobody asked anything of follows the cube."""
         options = self.parser.parse_args(['-e', 'ipc:///tmp/cube'])
 
-        self.assertFalse(options.auto)
+        self.assertFalse(options.no_auto)
 
-    def test_the_cube_is_followed_when_it_is_asked_for(self) -> None:
+    def test_the_cube_is_no_longer_followed_when_asked_not_to(self) -> None:
         """What the flag buys, and the only thing it does on its own."""
-        options = self.parser.parse_args(['-e', 'ipc:///tmp/cube', '--auto'])
+        options = self.parser.parse_args(
+            ['-e', 'ipc:///tmp/cube', '--no-auto'],
+        )
 
-        self.assertTrue(entry.build_tray(options).auto)
+        self.assertFalse(entry.build_tray(options).auto)
 
     def test_what_follows_two_dashes_is_for_the_window(self) -> None:
         """The window is argued with where it is documented."""

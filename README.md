@@ -90,6 +90,22 @@ around the core the moment a cube connects and says what it looks like,
 and they are blasted away from it again when the link drops — the state
 underneath is kept, and it is the one the next connection starts from.
 
+Four moments of a session are told the same way: the pieces part
+briefly on their own rays while the light rises and the cube takes a
+color — cold blue when a scramble is laid, warm amber when a solve
+lands, violet when an attempt on a trained case comes out, and a
+shorter, duller crimson when it does not. The color is worn by the
+plastic and by the ball the gap uncovers, never by the stickers: the
+colors of a cube are how one reads where it stands, and this window
+never moves them. A cube reporting itself solved is read through what
+the session says it is doing, a cube being scrambled coming back to
+the solved state a good many times an hour; a stream saying nothing of
+a session at all — a `bt-info`, a replay of the cube plane alone — is
+taken at its word. A training session is read another way still: a
+drilled case ends on a solved cube whether or not the case came out,
+so what the window answers there is the attempt term-timer publishes,
+and it says nothing at all of the cube seeing itself solved.
+
 The window is cleared with the cold slate of cubing-algs, and the cube
 is lit exactly as the library lights it: nothing here paints a ground
 or touches a light, so this window looks like every other window the

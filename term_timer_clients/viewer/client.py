@@ -14,6 +14,12 @@ from cubing_algs.transform.translate import translate_moves
 from cubing_algs.vcube import VCube
 
 from term_timer_clients.link import CubeLink
+from term_timer_clients.protocol import SESSION_STATE_TOPIC
+from term_timer_clients.protocol import SESSION_TRAIN_TOPIC
+from term_timer_clients.viewer.flare import FAILED_WORD
+from term_timer_clients.viewer.flare import SCRAMBLED_WORD
+from term_timer_clients.viewer.flare import SOLVED_WORD
+from term_timer_clients.viewer.flare import TRAINED_WORD
 
 if TYPE_CHECKING:
     from cubing_algs.algorithm import Algorithm
@@ -25,6 +31,37 @@ logger = logging.getLogger(__name__)
 WINDOW_TITLE = 'Cubecast'
 WINDOW_SEPARATOR = ' · '
 WINDOW_OFFLINE = 'offline'
+
+# The topic the cube reports its own state on, a literal like the
+# other ones of the hardware plane this client adds: what a window
+# does with a move is its business, and so is what it does with a cube
+# that has just seen itself solved.
+SOLVED_TOPIC = 'cube.solved'
+
+# The state a session is in when the scramble is laid on the cube, and
+# the one the window has anything to say about: the other eight are
+# read for what they say about a cube reporting itself solved.
+SCRAMBLED_STATE = 'scrambled'
+
+# The states where a cube saying it is solved is a cube that was being
+# solved. **The three and not `solving` alone**: nothing orders the
+# `stop` term-timer publishes against the `solved` the cube publishes
+# - one crosses a bluetooth link and the other does not - so both
+# orders have to land on the same window, and a solve saved a moment
+# later is still the very same solve.
+#
+# Everything else is a cube being fiddled with. A GAN republishes
+# `cube.solved` every time it happens to be solved, scrambling and
+# idle handling included - nine times in one session, as PROTOCOL.md
+# puts it - so the topic is read *through* the session rather than
+# on its own, or the window would announce a solve nobody made.
+SOLVING_STATES = frozenset({'solving', 'stop', 'saving'})
+
+# What the source of an envelope says when a training session is the
+# one talking. It is read on the envelope rather than on a state: a
+# training session walks through the very same states a timed one
+# does, and what tells the two apart is who is publishing them.
+TRAINING_SOURCE = 'train'
 
 
 class CubeCast(CubeLink):
@@ -93,7 +130,24 @@ class CubeCast(CubeLink):
             'cube.move': self.play_move,
             'cube.history': self.play_move,
             'cube.gyro': self.turn_cube,
+            SOLVED_TOPIC: self.celebrate,
+            SESSION_STATE_TOPIC: self.follow_state,
+            SESSION_TRAIN_TOPIC: self.rehearse,
         })
+
+        # What the session says it is doing, empty for as long as
+        # nothing has said anything. It is read for one thing alone:
+        # whether a cube reporting itself solved is a solve landing or
+        # a cube being handled.
+        self.state = ''
+
+        # The news the window is to tell at its next frame, and
+        # nothing the rest of the time. Written on the stream thread
+        # and read on the one that owns the window, which is the very
+        # arrangement the title travels by and the one the orders of a
+        # managed window travel by: the stream only ever writes down
+        # what happened.
+        self.wanted_flare = ''
 
     @property
     def present(self) -> bool:
@@ -137,6 +191,121 @@ class CubeCast(CubeLink):
 
         return WINDOW_SEPARATOR.join([WINDOW_TITLE, *parts])
 
+    def take_flare(self) -> str:
+        """
+        Read the news waiting to be told, and leave nothing behind.
+
+        Read from the thread that owns the window and written from the
+        one reading the stream: it is handed over and cleared in one
+        gesture, so a flare is played exactly once however many frames
+        go by before the next one arrives.
+
+        Returns:
+            What is to be announced, empty when there is nothing.
+
+        """
+        wanted, self.wanted_flare = self.wanted_flare, ''
+
+        return wanted
+
+    def follow_state(self, data: dict[str, Any]) -> None:
+        """
+        Remember what the session says it is doing, and greet a scramble.
+
+        The state is kept for the sake of the cube reporting itself
+        solved, which says nothing at all about *why* it is solved: a
+        cube is solved while it is being scrambled too, and what tells
+        the two apart is the only thing term-timer knows and the cube
+        does not.
+
+        A state this client has never heard of is simply remembered:
+        the nine of the protocol may grow, and a window refusing what
+        it does not know would stop answering the day one is added.
+
+        Args:
+            data: Payload of a ``session.state`` message.
+
+        """
+        state = data.get('state')
+
+        if not isinstance(state, str) or not state:
+            return
+
+        self.state = state
+
+        if state == SCRAMBLED_STATE:
+            self.wanted_flare = SCRAMBLED_WORD
+
+    def celebrate(self, _data: dict[str, Any]) -> None:
+        """
+        Answer the cube saying it sees itself solved, when it means it.
+
+        Read **through the session**: a GAN republishes this topic
+        every time the cube happens to come back to the solved state,
+        scrambling and idle fiddling included, so honoring all of them
+        would have the window celebrate nine times a session. What the
+        session says it is doing is the only thing telling a solve
+        landing from a cube being handled.
+
+        A session that has **never said anything at all** is honored
+        all the same, and that is a decision rather than an oversight:
+        it is what a client ignoring what it does not know comes to on
+        this side of the question, and it is what keeps the window
+        answering under a publisher of the cube plane alone - a
+        ``bt-info``, a rehearsal - which is exactly where the effect
+        is looked at while it is being settled.
+
+        A **training session says it another way**, and this topic
+        says nothing there: a case is drilled on a cube that always
+        ends up solved, so the news is not that it came back solved
+        but which attempt it was and whether it was worth anything,
+        which ``session.train`` alone knows. Two breaths for one
+        attempt would be the window stuttering. The source is read off
+        the envelope carrying this very ``cube.solved``, the link
+        writing it down before the handler is called.
+
+        Args:
+            _data: Payload of a ``cube.solved`` message. Nothing is
+                read of it: the topic *is* the news, and the stamp it
+                carries belongs to the move that got the cube there.
+
+        """
+        if self.source == TRAINING_SOURCE:
+            return
+
+        if self.state and self.state not in SOLVING_STATES:
+            return
+
+        self.wanted_flare = SOLVED_WORD
+
+    def rehearse(self, data: dict[str, Any]) -> None:
+        """
+        Answer an attempt on a trained case, whichever way it went.
+
+        The topic publishes every attempt that was executed, a DNF and
+        a free play run included, and the two ends of it are two
+        flavours rather than one told twice: a case that came out and
+        a case that did not are two versions of the same thing, which
+        is exactly what ``FLARES`` is shaped to say.
+
+        Nothing else of the payload is read. What the rating, the
+        state, the due date and the free play flag say is what the
+        training file keeps of the attempt, and a window has no
+        business with any of it.
+
+        A ``dnf`` that is absent or unreadable is read as **not** a
+        DNF, which is the permissive side and the one ``celebrate()``
+        is already written on: the news is that the exercise took
+        place.
+
+        Args:
+            data: Payload of a ``session.train`` message.
+
+        """
+        self.wanted_flare = (
+            FAILED_WORD if data.get('dnf') is True else TRAINED_WORD
+        )
+
     def restart(self, session_id: str) -> None:
         """
         Forget the session that was being watched, and follow a new one.
@@ -151,6 +320,12 @@ class CubeCast(CubeLink):
 
         """
         super().restart(session_id)
+
+        # What a session said it was doing belongs to that session: a
+        # publisher that restarted has said nothing yet, and a state
+        # kept across would read the first `cube.solved` of the new
+        # one through the last word of the old one.
+        self.state = ''
 
         if self.tracker is not None:
             self.tracker.reset()
@@ -323,3 +498,9 @@ class CubeCast(CubeLink):
 
         self.described = False
         self.clock.reset()
+
+        # A piece of news nobody is left to tell it about: the window
+        # is about to blow the cube apart, and a breath played on the
+        # pieces already on their way out would announce a solve on a
+        # cube that is no longer there.
+        self.wanted_flare = ''

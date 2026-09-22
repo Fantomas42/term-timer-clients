@@ -15,6 +15,7 @@ from term_timer_clients.orders import HIDE_ORDER
 from term_timer_clients.orders import SHOW_ORDER
 from term_timer_clients.viewer.assembly import Assembly
 from term_timer_clients.viewer.client import CubeCast
+from term_timer_clients.viewer.flare import Burst
 from term_timer_clients.viewer.framing import DEMO_VIEW
 from term_timer_clients.viewer.framing import USER_VIEW
 from term_timer_clients.viewer.framing import Framing
@@ -169,6 +170,12 @@ class CubeCastHost(GlfwHost):
     # is a cube that is not there.
     assembly: Assembly = field(init=False, default_factory=Assembly)
 
+    # What the cube is announcing right now, and nothing at all the
+    # rest of the time. The stream writes a word down and this is what
+    # plays it: a window belongs to the thread that opened it, so the
+    # news travels exactly as the title does.
+    burst: Burst = field(init=False, default_factory=Burst)
+
     def __post_init__(self) -> None:
         """
         Settle what a window driven from outside opens as.
@@ -319,16 +326,29 @@ class CubeCastHost(GlfwHost):
             delta: Seconds gone by since the last frame.
 
         """
-        drawn = self.assembly.advance(
-            self.viewer.advance(delta),
-            present=self.view.present,
-            linked=self.view.connected,
+        # Read on the thread that owns the window, and cleared as it
+        # is read: the stream only ever writes the word down.
+        self.burst.fire(self.view.take_flare())
+
+        # The breath is layered **on top of** the assembly, and the
+        # order is what makes the two safe together: the assembly
+        # places the pieces, the breath pushes them out from where
+        # they stand. Both travel the ray leaving the core through the
+        # place a piece belongs to, so a solve landing in the middle
+        # of an implosion adds to it without a piece meeting another.
+        drawn = self.burst.advance(
+            self.assembly.advance(
+                self.viewer.advance(delta),
+                present=self.view.present,
+                linked=self.view.connected,
+                delta=delta,
+            ),
             delta=delta,
         )
 
         # Read after the time has passed, and on its own line: the core
         # is painted for the very moment the pieces were just placed in.
-        look = self.assembly.tint(self.viewer.look)
+        look = self.burst.tint(self.assembly.tint(self.viewer.look))
 
         self.viewer.draw(scene=drawn, look=look)
 

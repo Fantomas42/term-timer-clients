@@ -92,12 +92,12 @@ def build_parser(config: Config) -> ArgumentParser:
         ),
     )
     parser.add_argument(
-        '-a', '--auto',
-        action='store_false',
+        '-a', '--no-auto',
+        action='store_true',
         help=(
-            'Show the window on its own whenever a cube connects,\n'
-            'and take it away once the cube is gone.\n'
-            'Default: the window is shown on connection.'
+            'Show the window by hand only: never opened when a\n'
+            'cube connects nor taken away once it is gone.\n'
+            'Default: False.'
         ),
     )
     parser.add_argument(
@@ -133,7 +133,7 @@ def build_tray(options: Namespace) -> CubeTray:
                 options.cast_arguments,
             ),
         ),
-        auto=options.auto,
+        auto=not options.no_auto,
     )
 
 

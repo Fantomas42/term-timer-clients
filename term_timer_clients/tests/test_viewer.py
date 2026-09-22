@@ -10,8 +10,10 @@ import math
 import sys
 import unittest
 from collections.abc import Sequence
+from itertools import combinations
 from itertools import pairwise
 from pathlib import Path
+from typing import Any
 from unittest.mock import MagicMock
 from unittest.mock import create_autospec
 from unittest.mock import patch
@@ -44,6 +46,8 @@ from term_timer_clients.orders import HIDE_ORDER
 from term_timer_clients.orders import SHOW_ORDER
 from term_timer_clients.protocol import SESSION_END_TOPIC
 from term_timer_clients.protocol import SESSION_PREFIX
+from term_timer_clients.protocol import SESSION_STATE_TOPIC
+from term_timer_clients.protocol import SESSION_TRAIN_TOPIC
 from term_timer_clients.tests.fixtures import envelope
 from term_timer_clients.tests.fixtures import envelopes
 from term_timer_clients.viewer import main as entry
@@ -59,9 +63,24 @@ from term_timer_clients.viewer.assembly import Flight
 from term_timer_clients.viewer.assembly import breath
 from term_timer_clients.viewer.assembly import tumble_axis
 from term_timer_clients.viewer.assembly import waiting_core
+from term_timer_clients.viewer.client import SCRAMBLED_STATE
+from term_timer_clients.viewer.client import SOLVED_TOPIC
+from term_timer_clients.viewer.client import SOLVING_STATES
+from term_timer_clients.viewer.client import TRAINING_SOURCE
 from term_timer_clients.viewer.client import WINDOW_OFFLINE
 from term_timer_clients.viewer.client import WINDOW_TITLE
 from term_timer_clients.viewer.client import CubeCast
+from term_timer_clients.viewer.flare import ATTACK_SHARE
+from term_timer_clients.viewer.flare import FAILED_WORD
+from term_timer_clients.viewer.flare import FLARES
+from term_timer_clients.viewer.flare import SCRAMBLED_FLARE
+from term_timer_clients.viewer.flare import SCRAMBLED_WORD
+from term_timer_clients.viewer.flare import SOLVED_FLARE
+from term_timer_clients.viewer.flare import SOLVED_WORD
+from term_timer_clients.viewer.flare import TRAINED_WORD
+from term_timer_clients.viewer.flare import Burst
+from term_timer_clients.viewer.flare import flared
+from term_timer_clients.viewer.flare import swell
 from term_timer_clients.viewer.framing import DEMO_VIEW
 from term_timer_clients.viewer.framing import USER_ROTATION
 from term_timer_clients.viewer.framing import USER_VIEW
@@ -627,6 +646,179 @@ class SessionEndTestCase(ClientTestCase):
         self.assertTrue(self.view.present)
 
 
+class SolvedFlareTestCase(ClientTestCase):
+    """The two pieces of news the stream leaves for the window."""
+
+    def announce(self, state: str) -> None:
+        """
+        Say what the session is doing right now.
+
+        Args:
+            state: One of the nine states of a solve.
+
+        """
+        self.view.dispatch(envelope(SESSION_STATE_TOPIC, {'state': state}))
+
+    def report_solved(self, session_id: str = 'a3f1c8d2') -> None:
+        """
+        Report the cube seeing itself back in the solved state.
+
+        Args:
+            session_id: Identifier of the session reporting it.
+
+        """
+        self.view.dispatch(
+            envelope(SOLVED_TOPIC, {'cube_timestamp': 1200.0},
+                     session_id=session_id),
+        )
+
+    def test_a_cube_solved_while_scrambling_says_nothing(self) -> None:
+        """A GAN reports itself solved all through a scramble."""
+        self.announce('scrambling')
+        self.report_solved()
+
+        self.assertEqual(self.view.wanted_flare, '')
+
+    def test_a_cube_solved_while_solving_is_a_solve(self) -> None:
+        """The one moment the topic means what the window tells."""
+        self.announce('solving')
+        self.report_solved()
+
+        self.assertEqual(self.view.wanted_flare, SOLVED_WORD)
+
+    def test_the_stop_and_the_solved_may_arrive_either_way_round(
+            self,
+    ) -> None:
+        """Nothing orders what crosses a link against what does not."""
+        for state in sorted(SOLVING_STATES):
+            with self.subTest(state=state):
+                view = CubeCast(self.viewer)
+                view.dispatch(
+                    envelope(SESSION_STATE_TOPIC, {'state': state}),
+                )
+                view.dispatch(envelope(SOLVED_TOPIC))
+
+                self.assertEqual(view.wanted_flare, SOLVED_WORD)
+
+    def test_a_session_that_never_spoke_is_honored(self) -> None:
+        """A publisher of the cube plane alone still shows the effect."""
+        self.report_solved()
+
+        self.assertEqual(self.view.wanted_flare, SOLVED_WORD)
+
+    def test_a_scramble_being_laid_is_the_other_piece_of_news(self) -> None:
+        """A scramble is a beginning, and the window says so."""
+        self.announce(SCRAMBLED_STATE)
+
+        self.assertEqual(self.view.wanted_flare, SCRAMBLED_WORD)
+
+    def test_a_state_that_is_not_a_string_is_ignored(self) -> None:
+        """A payload this client cannot read leaves the session alone."""
+        self.announce('solving')
+        self.view.dispatch(envelope(SESSION_STATE_TOPIC, {'state': 42}))
+
+        self.assertEqual(self.view.state, 'solving')
+
+    def test_the_window_is_told_once(self) -> None:
+        """A word handed over is a word nothing plays a second time."""
+        self.report_solved()
+
+        self.assertEqual(self.view.take_flare(), SOLVED_WORD)
+        self.assertEqual(self.view.take_flare(), '')
+
+    def test_a_new_session_starts_over_on_what_it_says_itself(self) -> None:
+        """What a session said it was doing belongs to that session."""
+        self.announce('scrambling')
+        self.report_solved(session_id='ffffffff')
+
+        self.assertEqual(self.view.state, '')
+        self.assertEqual(self.view.wanted_flare, SOLVED_WORD)
+
+    def test_a_cube_that_goes_away_takes_the_news_with_it(self) -> None:
+        """A breath on pieces already blown out announces nothing."""
+        self.report_solved()
+        self.view.dispatch(envelope('cube.link', {'connected': False}))
+
+        self.assertEqual(self.view.wanted_flare, '')
+
+
+class TrainedFlareTestCase(ClientTestCase):
+    """What an attempt on a trained case leaves for the window."""
+
+    def attempt(self, data: dict[str, Any]) -> None:
+        """
+        Report an attempt on a case, as a training session ends one.
+
+        Args:
+            data: What the session says of the attempt.
+
+        """
+        self.view.dispatch(
+            envelope(SESSION_TRAIN_TOPIC, data, source=TRAINING_SOURCE),
+        )
+
+    def train(self, topic: str, data: dict[str, Any]) -> None:
+        """
+        Say something of the cube plane under a training session.
+
+        Args:
+            topic: Topic of the message.
+            data: Payload of the message.
+
+        """
+        self.view.dispatch(envelope(topic, data, source=TRAINING_SOURCE))
+
+    def test_a_case_that_came_out_is_the_news(self) -> None:
+        """An attempt that landed is what a training session is made of."""
+        self.attempt({'dnf': False})
+
+        self.assertEqual(self.view.wanted_flare, TRAINED_WORD)
+
+    def test_a_case_that_did_not_come_out_has_its_own_flavour(self) -> None:
+        """A DNF is the other end of an attempt, and is told as one."""
+        self.attempt({'dnf': True})
+
+        self.assertEqual(self.view.wanted_flare, FAILED_WORD)
+
+    def test_an_attempt_saying_nothing_of_a_dnf_is_read_as_landed(
+            self,
+    ) -> None:
+        """The permissive side: the news is that the exercise happened."""
+        self.attempt({'case': 'Sune', 'counter': 3})
+
+        self.assertEqual(self.view.wanted_flare, TRAINED_WORD)
+
+    def test_a_free_play_attempt_is_told_like_any_other(self) -> None:
+        """What a training file keeps of an attempt is not a window's."""
+        self.attempt(
+            {'dnf': False, 'free_play': True, 'rating': '', 'state': ''},
+        )
+
+        self.assertEqual(self.view.wanted_flare, TRAINED_WORD)
+
+    def test_a_cube_solved_in_a_training_says_nothing(self) -> None:
+        """A drilled case ends solved whether or not it came out."""
+        self.train(SESSION_STATE_TOPIC, {'state': 'solving'})
+        self.train(SOLVED_TOPIC, {'cube_timestamp': 1200.0})
+
+        self.assertEqual(self.view.wanted_flare, '')
+
+    def test_a_cube_solved_in_a_solve_is_still_the_warm_one(self) -> None:
+        """Outside a training, nothing at all has changed."""
+        self.view.dispatch(
+            envelope(SESSION_STATE_TOPIC, {'state': 'solving'}),
+        )
+        self.view.dispatch(envelope(SOLVED_TOPIC))
+
+        self.assertEqual(self.view.wanted_flare, SOLVED_WORD)
+
+    def test_the_scramble_of_a_training_is_still_the_cold_one(self) -> None:
+        """A case laid on the cube is a beginning like any other."""
+        self.train(SESSION_STATE_TOPIC, {'state': SCRAMBLED_STATE})
+
+        self.assertEqual(self.view.wanted_flare, SCRAMBLED_WORD)
+
+
 def cube_place(instance: CubieInstance) -> Vec3:
     """
     Tell where a piece stands, wherever the blast has taken it.
@@ -1142,6 +1334,345 @@ class CoreSpinTestCase(unittest.TestCase):
         self.assertNotAlmostEqual(assembly.turned, assembly.elapsed)
 
 
+def fired(word: str, phase: float) -> Burst:
+    """
+    Build a breath standing a given share of the way through itself.
+
+    Args:
+        word: What is being announced.
+        phase: How far along its own duration the breath stands.
+
+    Returns:
+        The breath, at that very moment.
+
+    """
+    burst = Burst()
+    burst.fire(word)
+    burst.elapsed = FLARES[word].duration * phase
+
+    return burst
+
+
+class SwellTestCase(unittest.TestCase):
+    """The curve the breath of a piece of news is drawn on."""
+
+    def test_the_breath_rests_at_both_of_its_ends(self) -> None:
+        """Exactly nothing, so the return to rest is an equality."""
+        self.assertEqual(swell(0.0), 0.0)
+        self.assertEqual(swell(1.0), 0.0)
+        self.assertEqual(swell(-1.0), 0.0)
+        self.assertEqual(swell(2.0), 0.0)
+
+    def test_the_breath_is_whole_at_its_peak(self) -> None:
+        """The attack lands on all of it, not near it."""
+        self.assertEqual(swell(ATTACK_SHARE), 1.0)
+
+    def test_the_breath_never_goes_past_itself(self) -> None:
+        """An overshoot would take a piece further than it was sent."""
+        for step in range(201):
+            self.assertLessEqual(swell(step / 200.0), 1.0)
+            self.assertGreaterEqual(swell(step / 200.0), 0.0)
+
+    def test_the_attack_is_sharper_than_the_fall(self) -> None:
+        """News arrives: a swell taking as long to leave is a beat."""
+        step = ATTACK_SHARE / 2
+
+        self.assertLess(ATTACK_SHARE, 0.5)
+        self.assertGreater(
+            swell(ATTACK_SHARE + step), swell(ATTACK_SHARE - step),
+        )
+
+
+class BurstTestCase(unittest.TestCase):
+    """The cube catching its breath over a piece of news."""
+
+    def test_a_word_nobody_knows_announces_nothing(self) -> None:
+        """A client ignores what it does not know, here as anywhere."""
+        burst = Burst()
+
+        burst.fire('')
+        self.assertIsNone(burst.flare)
+
+        burst.fire('celebrating')
+        self.assertIsNone(burst.flare)
+
+    def test_the_duration_bounds_the_breath(self) -> None:
+        """A flare is let go rather than left standing at its end."""
+        burst = Burst()
+        burst.fire(SOLVED_WORD)
+
+        burst.settle(SOLVED_FLARE.duration / 2)
+        self.assertIsNotNone(burst.flare)
+
+        burst.settle(SOLVED_FLARE.duration)
+        self.assertIsNone(burst.flare)
+        self.assertEqual(burst.elapsed, 0.0)
+
+    def test_a_flare_arriving_over_one_starts_over(self) -> None:
+        """Two breaths overlapping would be a cube shivering."""
+        burst = fired(SOLVED_WORD, 0.5)
+
+        burst.fire(SCRAMBLED_WORD)
+
+        self.assertIs(burst.flare, SCRAMBLED_FLARE)
+        self.assertEqual(burst.elapsed, 0.0)
+
+    def test_a_frame_going_backwards_moves_nothing(self) -> None:
+        """A clock that went back leaves the breath where it was."""
+        burst = fired(SOLVED_WORD, 0.5)
+        standing = burst.elapsed
+
+        burst.settle(-1.0)
+
+        self.assertEqual(burst.elapsed, standing)
+
+    def test_a_cube_with_nothing_to_say_is_handed_back_untouched(
+            self,
+    ) -> None:
+        """The state a window spends its life in costs nothing at all."""
+        scene = solved_scene()
+
+        self.assertIs(Burst().apply(scene), scene)
+
+    def test_a_breath_that_is_over_hands_the_scene_back(self) -> None:
+        """The return to rest is an identity, not an approach."""
+        scene = solved_scene()
+        burst = Burst()
+        burst.fire(SOLVED_WORD)
+
+        self.assertIs(
+            burst.advance(scene, delta=SOLVED_FLARE.duration), scene,
+        )
+
+    def test_every_piece_is_still_drawn_while_the_cube_breathes(self) -> None:
+        """A breath opens the cube, it never takes a piece away."""
+        scene = solved_scene()
+
+        gusted = fired(SOLVED_WORD, ATTACK_SHARE).apply(scene)
+
+        self.assertEqual(len(gusted.instances), len(scene.instances))
+
+    def test_a_piece_only_ever_travels_its_own_ray(self) -> None:
+        """A gust leaves the core, and nothing crosses the middle."""
+        scene = solved_scene()
+
+        for phase in (0.1, ATTACK_SHARE, 0.5, 0.8):
+            gusted = fired(SOLVED_WORD, phase).apply(scene)
+
+            for resting, pushed in zip(
+                    scene.instances, gusted.instances, strict=True,
+            ):
+                place = cube_place(resting)
+                gust = cube_place(pushed)
+
+                self.assertAlmostEqual(place.cross(gust).length(), 0.0)
+                self.assertGreater(place.dot(gust), 0.0)
+                self.assertGreaterEqual(gust.length(), place.length())
+
+    def test_the_wavefront_runs_outwards_from_the_core(self) -> None:
+        """The gust leaves the ball rather than lifting the cube."""
+        scene = solved_scene()
+
+        gusted = fired(SOLVED_WORD, ATTACK_SHARE / 2).apply(scene)
+
+        shells: dict[float, set[float]] = {}
+
+        for resting, pushed in zip(
+                scene.instances, gusted.instances, strict=True,
+        ):
+            radius = cube_place(resting).length()
+
+            shells.setdefault(round(radius, 6), set()).add(
+                round(cube_place(pushed).length() / radius - 1.0, 6),
+            )
+
+        travelled = []
+
+        for _radius, shell in sorted(shells.items()):
+            self.assertEqual(len(shell), 1)
+            travelled.append(shell.pop())
+
+        # The centers are further along their own breath than the
+        # corners are along theirs, at the moment the wave is rising
+        self.assertGreater(travelled[0], travelled[-1])
+
+    def test_no_piece_is_ever_driven_into_another(self) -> None:
+        """The shells keep their order, whatever the wavefront opens."""
+        scene = solved_scene()
+
+        for word in sorted(FLARES):
+            for step in range(1, 40):
+                gusted = fired(word, step / 40.0).apply(scene)
+
+                shells: dict[float, set[float]] = {}
+
+                for resting, pushed in zip(
+                        scene.instances, gusted.instances, strict=True,
+                ):
+                    shells.setdefault(
+                        round(cube_place(resting).length(), 6), set(),
+                    ).add(round(cube_place(pushed).length(), 6))
+
+                thrown = [
+                    next(iter(shell))
+                    for _radius, shell in sorted(shells.items())
+                ]
+
+                self.assertEqual(thrown, sorted(thrown))
+
+    def test_a_cube_breathes_the_same_way_twice(self) -> None:
+        """What a piece is turned by is drawn from the piece itself."""
+        scene = solved_scene()
+
+        self.assertEqual(
+            fired(SOLVED_WORD, 0.3).apply(scene).instances,
+            fired(SOLVED_WORD, 0.3).apply(scene).instances,
+        )
+
+    def test_time_passes_before_the_picture_is_drawn(self) -> None:
+        """One call lets the time pass and hands the picture over."""
+        scene = solved_scene()
+        burst = Burst()
+        burst.fire(SCRAMBLED_WORD)
+
+        drawn = burst.advance(scene, delta=0.016)
+
+        self.assertEqual(burst.elapsed, 0.016)
+        self.assertIsNot(drawn, scene)
+
+
+class FlareTintTestCase(unittest.TestCase):
+    """The light a cube tells its piece of news in."""
+
+    def test_a_cube_with_nothing_to_say_keeps_its_look(self) -> None:
+        """The very object, so nothing of the effect is ever left in it."""
+        self.assertIs(Burst().tint(DEFAULT_LOOK), DEFAULT_LOOK)
+
+    def test_a_breath_that_is_over_keeps_the_look_too(self) -> None:
+        """A flare let go is a look handed back as it came."""
+        burst = Burst()
+        burst.fire(SOLVED_WORD)
+        burst.settle(SOLVED_FLARE.duration)
+
+        self.assertIs(burst.tint(DEFAULT_LOOK), DEFAULT_LOOK)
+
+    def test_the_light_rises_with_the_breath(self) -> None:
+        """A cube changing color alone would read as a palette swapped."""
+        for word in sorted(FLARES):
+            with self.subTest(word=word):
+                peak = fired(word, ATTACK_SHARE).tint(DEFAULT_LOOK)
+
+                self.assertGreater(
+                    peak.rim_strength, DEFAULT_LOOK.rim_strength,
+                )
+                self.assertLess(peak.rim_power, DEFAULT_LOOK.rim_power)
+
+    def test_the_light_is_framed_by_the_two_ends_of_the_breath(self) -> None:
+        """Halfway up is halfway between the look and the flavour."""
+        for word in sorted(FLARES):
+            with self.subTest(word=word):
+                flare = FLARES[word]
+                rising = fired(word, ATTACK_SHARE / 2).tint(DEFAULT_LOOK)
+
+                self.assertGreater(
+                    rising.rim_strength, DEFAULT_LOOK.rim_strength,
+                )
+                self.assertLess(
+                    rising.rim_strength,
+                    flared(DEFAULT_LOOK, flare).rim_strength,
+                )
+
+    def test_the_core_is_carried_towards_the_hue(self) -> None:
+        """What the gust uncovers says the same thing as the plastic."""
+        for word in sorted(FLARES):
+            with self.subTest(word=word):
+                flare = FLARES[word]
+                mixed = fired(word, ATTACK_SHARE / 2).tint(
+                    DEFAULT_LOOK,
+                ).core_color
+
+                for live, channel, hue in zip(
+                        CORE_COLOR, mixed, flare.hue, strict=True,
+                ):
+                    self.assertGreaterEqual(channel, min(live, hue))
+                    self.assertLessEqual(channel, max(live, hue))
+
+                self.assertNotEqual(tuple(mixed), tuple(CORE_COLOR))
+
+    def test_no_two_pieces_of_news_are_told_alike(self) -> None:
+        """Amber, blue, violet and crimson: none is ever worked out."""
+        for one, other in combinations(sorted(FLARES), 2):
+            with self.subTest(words=(one, other)):
+                self.assertNotEqual(FLARES[one].hue, FLARES[other].hue)
+
+        solved = fired(SOLVED_WORD, ATTACK_SHARE).tint(DEFAULT_LOOK)
+        scrambled = fired(SCRAMBLED_WORD, ATTACK_SHARE).tint(DEFAULT_LOOK)
+
+        self.assertNotEqual(solved.core_color, scrambled.core_color)
+
+        # Warm against cold, read on the channels that decide it
+        self.assertGreater(solved.core_color[0], scrambled.core_color[0])
+        self.assertLess(solved.core_color[2], scrambled.core_color[2])
+
+    def test_nothing_but_the_core_and_the_rim_ever_moves(self) -> None:
+        """One mix, and a flavour built on the look it is handed."""
+        peak = fired(SOLVED_WORD, ATTACK_SHARE).tint(DEFAULT_LOOK)
+
+        self.assertEqual(peak.ambient, DEFAULT_LOOK.ambient)
+        self.assertEqual(
+            peak.specular_strength, DEFAULT_LOOK.specular_strength,
+        )
+        self.assertEqual(peak.light_direction, DEFAULT_LOOK.light_direction)
+        self.assertEqual(peak.groove_occlusion, DEFAULT_LOOK.groove_occlusion)
+
+
+class FlarePlasticTestCase(unittest.TestCase):
+    """What the news is painted on, and what it never touches."""
+
+    def test_the_plastic_carries_the_hue_while_the_cube_breathes(
+            self,
+    ) -> None:
+        """The frame around every sticker is what tells the news."""
+        scene = solved_scene()
+
+        for word in sorted(FLARES):
+            with self.subTest(word=word):
+                flare = FLARES[word]
+                gusted = fired(word, ATTACK_SHARE).apply(scene)
+
+                for plain, channel, hue in zip(
+                        scene.plastic, gusted.plastic, flare.hue, strict=True,
+                ):
+                    self.assertGreaterEqual(channel, min(plain, hue))
+                    self.assertLessEqual(channel, max(plain, hue))
+
+                self.assertNotEqual(
+                    tuple(gusted.plastic), tuple(scene.plastic),
+                )
+
+    def test_the_plastic_comes_back_exactly(self) -> None:
+        """A breath that is over leaves nothing of itself in the cube."""
+        scene = solved_scene()
+        burst = Burst()
+        burst.fire(SOLVED_WORD)
+
+        self.assertEqual(
+            burst.advance(scene, delta=SOLVED_FLARE.duration).plastic,
+            scene.plastic,
+        )
+
+    def test_no_sticker_ever_changes_color(self) -> None:
+        """The color of a cube is how one reads where it stands."""
+        scene = solved_scene()
+
+        gusted = fired(SOLVED_WORD, ATTACK_SHARE).apply(scene)
+
+        self.assertEqual(
+            [instance.colors for instance in gusted.instances],
+            [instance.colors for instance in scene.instances],
+        )
+
+
 class CaptureTestCase(unittest.TestCase):
     """The client fed by real captures, into a real viewer."""
 
@@ -1318,6 +1849,42 @@ class CubeCastHostTestCase(unittest.TestCase):
 
         self.viewer.advance.assert_called_once_with(0.016)
         self.viewer.frame.assert_not_called()
+
+    def test_the_breath_is_chained_on_the_assembly(self) -> None:
+        """The news is pushed on the pieces the assembly has placed."""
+        scene = solved_scene()
+        self.viewer.advance.return_value = scene
+        self.viewer.look = DEFAULT_LOOK
+        self.host.assembly.progress = 1.0
+        self.host.assembly.glow = 1.0
+        self.view.dispatch(envelope('cube.facelets', {'facelets': FACELETS}))
+        self.view.dispatch(envelope(SOLVED_TOPIC))
+
+        self.host.frame(0.016)
+
+        drawn = self.viewer.draw.call_args.kwargs['scene']
+        look = self.viewer.draw.call_args.kwargs['look']
+
+        self.assertIsNot(drawn, scene)
+        self.assertNotEqual(drawn.plastic, scene.plastic)
+        self.assertGreater(look.rim_strength, DEFAULT_LOOK.rim_strength)
+        self.assertEqual(self.view.wanted_flare, '')
+
+    def test_a_frame_with_no_news_draws_what_the_assembly_placed(
+            self,
+    ) -> None:
+        """The breath costs the window nothing outside of itself."""
+        scene = solved_scene()
+        self.viewer.advance.return_value = scene
+        self.viewer.look = DEFAULT_LOOK
+        self.host.assembly.progress = 1.0
+        self.host.assembly.glow = 1.0
+        self.view.dispatch(envelope('cube.facelets', {'facelets': FACELETS}))
+
+        self.host.frame(0.016)
+
+        self.assertIs(self.viewer.draw.call_args.kwargs['scene'], scene)
+        self.assertIs(self.viewer.draw.call_args.kwargs['look'], DEFAULT_LOOK)
 
     def test_frame_draws_no_piece_without_a_cube(self) -> None:
         """A stream with no cube behind it leaves the core alone."""
