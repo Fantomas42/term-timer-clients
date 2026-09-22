@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(rtk ls *)",
+      "Read(//home/fantomas/dev/term-timer/**)",
+      "Bash(rtk grep *)",
+      "Bash(rtk read *)",
+      "Bash(ruff check *)",
+      "Bash(rtk git *)",
+      "Bash(python *)"
+    ]
+  }
+}
