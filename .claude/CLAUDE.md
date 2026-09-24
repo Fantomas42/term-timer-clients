@@ -160,13 +160,11 @@ name is a prefix of another, which is why the move catch-up is
 `cube.history` and not
 `cube.move_history`. A whole topic name filters just as well, which is
 what `cube-cast` subscribes with: `SESSION_END_TOPIC` and
-`SESSION_STATE_TOPIC` and `SESSION_TRAIN_TOPIC` next to the cube
-plane, the three messages of the session plane a window has any use
-for — the end of the stream, what the session says it is doing, which
-is the only thing telling a solve landing from a cube being fiddled
-with, and an attempt on a trained case, which is the one thing a cube
-ending every case solved can never tell — and the rest of what
-term-timer knows alone stays on the wire.
+`SESSION_STATE_TOPIC` next to the cube plane, the two messages of the
+session plane a window has any use for — the end of the stream, and
+what the session says it is doing, which is the only thing saying a
+scramble was laid and an attempt is over, whichever cube is connected
+— and the rest of what term-timer knows alone stays on the wire.
 
 ## Style
 

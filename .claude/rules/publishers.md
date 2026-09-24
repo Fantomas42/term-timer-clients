@@ -35,28 +35,24 @@ cannot bind the same endpoint: settling the breaths of
 nothing else here says the session one. It rehearses no honest attempt
 — `realistic_cube.py` already does that for the cube plane — it
 **replays the moments in a loop**, which is what a duration, a
-reach, a curve and four hues are settled with: `scrambling`, the
+reach, a curve and two hues are settled with: `scrambling`, the
 scramble published as facelets, `scrambled`, the moves putting it back
-together, then `cube.solved` and `stop`. The solve is the **inverse**
-of the scramble, so the cube truly is solved when it says so — a bench
-announcing a solve on a cube that is not one would be settling the
-effect on a lie — and `cube.solved` is published **before** the `stop`
-that follows it, that being the order a window has the least to go on
-and therefore the one that has to work. It follows the conventions of
-the directory that `phantom_cube.py` carries in its header: outside
-`term_timer_clients`, outside `[project.scripts]`, nothing imports it
-and **nothing tests it**, what it is worth being read in the window it
-opens. Each pause is an argument of its own, `sid` is drawn at every
-run, and Ctrl+C drops the link rather than falling silent. `--train`
-is the other half of it: every envelope goes out under `src='train'`,
-the cycle ends on a `session.train` **whose `dnf` alternates from one
-turn to the next** — which is what puts the two ends of an attempt
-side by side the way the two breaths of a solve already are — and
-`cube.solved` goes on being published there, that being precisely
-what one has to watch the window **not** answer. `--trained` is the
-pause of its own that moment takes, in `Pauses` like the five others,
-and without the flag the bench is exactly the one it was.
-`realistic_cube.py` stays the second bench, and it is the one case
-`flare_cube.py` cannot show: it publishes `cube.solved` with no
-`session.state` anywhere, which is exactly the session that never
-spoke.
+together, then `stop`. The solve is the **inverse** of the scramble,
+so the cube truly is solved when the attempt ends — a bench landing a
+solve on a cube that is not one would be settling the effect on
+something else. **It publishes no `cube.solved`**: both breaths are
+values of `session.state`, a window reads nothing of that topic, and a
+bench publishing it would be settling nothing. Nor is there a training
+mode: a trained case ends on the very same `stop` and breathes the
+very same breath, so a second bench of it would show nothing the
+first does not. It follows the conventions of the directory that
+`phantom_cube.py` carries in its header: outside `term_timer_clients`,
+outside `[project.scripts]`, nothing imports it and **nothing tests
+it**, what it is worth being read in the window it opens. Each pause
+is an argument of its own, `sid` is drawn at every run, and Ctrl+C
+drops the link rather than falling silent.
+`realistic_cube.py` stays the second bench, and it is the check
+`flare_cube.py` does not make: it publishes `cube.solved` with no
+`session.state` anywhere, so a window watching it **breathes on
+nothing at all** — the cube seeing itself solved is not an attempt
+being over.

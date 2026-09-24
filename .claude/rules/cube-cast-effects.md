@@ -122,66 +122,46 @@ paths:
   divided by `PULSE_PERIOD`, and it has its own counter for that
   reason: one clock shared would either lock the breath and the turn
   into a single beat or jump one of them at the wrap.
-- **`viewer/flare.py`** — the four pieces of news a window tells about
+- **`viewer/flare.py`** — the two pieces of news a window tells about
   itself, and the only thing `cube-cast` says beyond whether a cube is
   there: a **breath** — the pieces part briefly on their own rays while
   the light rises and the cube takes a color — played on a scramble
-  being laid, on a solve landing, and on either end of an attempt on a
-  trained case: cold blue for the first, warm amber for the second,
-  violet and crimson for the two ends of the third. Written in the
-  shape of `assembly.py` for the reason it shares its arithmetic: a
-  scene comes in and a scene comes out, its pieces moved, and nothing
-  here touches a viewer or a window.
-  **No protocol changed for any of it.** Every topic already exists
-  and is already published; what changed is the list `cube-cast`
-  subscribes to. Two constraints decide the shape of the first two,
-  and neither is a taste. **`cube.solved` is noisy by contract** —
-  `PROTOCOL.md` says a GAN republishes it every time the cube happens to
-  be solved, "scrambling and idle fiddling included — nine times in one
-  session" — so it is read **through `session.state`** and honored only
-  in `SOLVING_STATES`, the states where a cube saying it is solved is a
-  cube somebody was solving. The three and not `solving` alone: nothing
-  orders the `stop` term-timer publishes against the `solved` the cube
-  publishes — one crosses a bluetooth link and the other does not — and
-  both orders have to land. And **`scrambled` has no `cube.*` topic at
-  all**, being a value of `session.state`, which is why that whole
-  topic name joins `session.end` in the prefixes. A `cube.solved`
-  arriving while **no session has ever spoken** is honored, and that is
-  a decision rather than an oversight: it is the rule a client lives by
-  — ignore what you do not know — read on the permissive side, and it
-  is what keeps the effect visible under `bt-info` and under
-  `publishers/realistic_cube.py`, which publishes `cube.solved` and, by
-  contract, nothing of the session plane. Without it the breath would
-  only ever be settled with a real term-timer session at hand.
-  A **training session says it another way**, and that is the whole of
-  the third and fourth: under `src == 'train'` — the source
-  `CubeLink` writes down off the envelope *before* the handler is
-  called — `cube.solved` says nothing at all, and `session.train` is
-  what the window answers instead. A drilled case ends on a solved
-  cube whether or not the case came out, so the solved state is a
-  consequence there rather than a piece of news, and the attempt is
-  the only thing knowing which case it was and whether it was worth
-  anything; **two breaths for one attempt would be the window
-  stuttering**. The topic publishes *every* attempt that was executed,
-  a DNF and a free play run included, so a failure is a flavour of its
-  own rather than a silence — a piece of news is a piece of news, and
-  two outcomes are two flavours, which is the very shape `FLARES` has.
-  Only `dnf` is read of the payload — what the rating, the state, the
-  due date and the free play flag say is what the training file keeps
-  — and an absent or unreadable one is read as *not* a DNF, the
-  permissive side `celebrate()` is already written on. **The violet
-  and the crimson are neighbours on the wheel where the amber and the
-  blue are opposites**, and that is the argument rather than what was
-  left of it: the two ends of one attempt read as two versions of a
-  thing, where the start and the end of a solve read as two things —
-  a DNF is not the contrary of a case landed, it is its other end.
-  What makes the failure dull is its **`glow`**, the lowest of the
-  four, rather than merely the shortest breath: the rim barely rises,
-  so the cube gives a start instead of lighting up: a miss is told,
-  never announced. Its reach and its tumble stay under everything else
-  for the reason `WAVEFRONT` documents — the shells keep their order
-  for any reach at or under one, and a piece of news one regrets does
-  not open the cube.
+  being laid and on an attempt being over: cold blue for the first,
+  warm amber for the second. Written in the shape of `assembly.py` for
+  the reason it shares its arithmetic: a scene comes in and a scene
+  comes out, its pieces moved, and nothing here touches a viewer or a
+  window.
+  **No protocol changed for any of it.** Both are values of
+  `session.state` — `scrambled` and `stop` — which is why that whole
+  topic name joins `session.end` in the prefixes, and nothing else of
+  the session plane is subscribed to. **The end of an attempt is read
+  on `stop` and never on `cube.solved`**, and that is not a taste:
+  `cube.solved` is published by some drivers only, and those that do
+  publish it republish it every time the cube happens to be solved —
+  "scrambling and idle fiddling included — nine times in one session",
+  as `PROTOCOL.md` puts it — where `stop` is published by term-timer
+  itself at the end of every attempt, whichever cube is connected. It
+  is the same `stop` for a timed solve and for a trained case — a
+  training session goes through the very same states — so there is
+  **one breath per attempt**, and the same one whether it came out or
+  not: the window says an attempt is over, and what it was worth is
+  what term-timer keeps of it. A solve stopped from the keyboard, on a
+  cube that is not solved, is an attempt over like any other and
+  breathes the same. **A drill is where the two breaths meet**: every
+  rep of `term-timer drill` publishes a `scrambled` and a `stop`, a
+  second apart or less, so a breath routinely arrives over one still
+  being told. It **takes it over rather than starting from rest** —
+  `Burst.fire()` picks the new one up on its own attack at the height
+  the cube stands at, `ascent()` being the exact inverse of
+  `smoothstep()` for that, and holds the flavour it interrupts in
+  `origin` while `relay` walks from it to the new one over one attack
+  of the new one, `Flare.mingled()` mixing everything but the
+  duration. Started from zero, every piece would snap home in one
+  frame and set out again; `BurstRelayTestCase` is what holds the
+  pieces, the plastic and the light still across the takeover. The
+  blue of a drill is read as it is published — term-timer says
+  `scrambled` at every rep with no scramble laid — and this client
+  shows what the session says rather than second-guessing it.
   **The color travels on the plastic and on the core, never on the
   stickers**: `Scene.plastic` tints the edges, the chamfers and the
   grooves of every piece, `Look.core_color` tints the ball the gust

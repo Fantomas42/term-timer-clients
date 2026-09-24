@@ -1,9 +1,11 @@
 """A breath on the cube, when it has a piece of news to tell."""
+import math
 from dataclasses import dataclass
 from dataclasses import replace
 
 from cubing_algs.display.gl.constants import Look
 from cubing_algs.display.gl.constants import clamp
+from cubing_algs.display.gl.constants import lerp
 from cubing_algs.display.gl.scene import CubieInstance
 from cubing_algs.display.gl.scene import Scene
 from cubing_algs.display.gl.transforms import Mat4
@@ -44,27 +46,15 @@ WAVEFRONT = 0.3
 # colors.
 FLARE_HALO = 0.35
 
-# The colors the four pieces of news are told in, and the whole of
-# what tells them apart at a glance: warm amber for a cube that came
-# back solved, cold blue for a scramble that has just been laid on it.
+# The colors the two pieces of news are told in, and the whole of
+# what tells them apart at a glance: warm amber for an attempt that is
+# over, cold blue for a scramble that has just been laid on the cube.
 # Far enough apart on the wheel that no lighting and no palette can
 # have one read as the other - what a window says of a solve landing
 # must never have to be worked out.
 SOLVED_HUE = Vec3(1.0, 0.62, 0.22)
 
 SCRAMBLED_HUE = Vec3(0.22, 0.48, 1.0)
-
-# The two ends of one attempt on a trained case, and **they are
-# neighbours on the wheel where the amber and the blue are opposites**.
-# That is the argument rather than what was left of it: the start and
-# the end of a solve are two different things and are told as two,
-# where a case that came out and a case that did not are two versions
-# of the very same thing - a DNF is not the contrary of a case landed,
-# it is its other end. So a violet a third of the wheel from either
-# announcement, and a crimson a step from that violet.
-TRAINED_HUE = Vec3(0.72, 0.36, 1.0)
-
-FAILED_HUE = Vec3(0.95, 0.16, 0.34)
 
 # The words the pieces of news travel under, from the client writing
 # one down to the window playing it. Both sides are in this file for
@@ -74,10 +64,6 @@ FAILED_HUE = Vec3(0.95, 0.16, 0.34)
 SOLVED_WORD = 'solved'
 
 SCRAMBLED_WORD = 'scrambled'
-
-TRAINED_WORD = 'trained'
-
-FAILED_WORD = 'failed'
 
 
 def smoothstep(share: float) -> float:
@@ -99,6 +85,34 @@ def smoothstep(share: float) -> float:
     bounded = clamp(share)
 
     return bounded * bounded * (3.0 - 2.0 * bounded)
+
+
+def ascent(height: float) -> float:
+    """
+    Tell how far along ``smoothstep()`` one has to go to reach a height.
+
+    Its exact inverse, read in closed form rather than searched for: a
+    breath taken over is picked up on the attack of the next one at the
+    very height the cube stands at, and an approximation would be a
+    jump of its own, however small.
+
+    Args:
+        height: The eased share to reach, from nothing to all of it.
+
+    Returns:
+        The share that eases to it, from none of the way to all of it.
+
+    """
+    # Both ends are answered exactly rather than computed: the sine of
+    # a sixth of a turn is not a half in floating point, and a breath
+    # starting from rest must start from nothing at all.
+    if height <= 0.0:
+        return 0.0
+
+    if height >= 1.0:
+        return 1.0
+
+    return 0.5 - math.sin(math.asin(1.0 - 2.0 * height) / 3.0)
 
 
 def swell(phase: float) -> float:
@@ -187,8 +201,36 @@ class Flare:
     # swapped, and one that only brightened as a lamp moved.
     glow: float
 
+    def mingled(self, other: 'Flare', share: float) -> 'Flare':
+        """
+        Read the flavour part of the way towards another one.
 
-# A cube that came back solved: the wide, warm one. It is the news a
+        What a cube looks like while one piece of news takes over from
+        another: the reach, the tumble, the color and the light walk
+        from this flavour to the other, **and the duration does not** -
+        it is what the time of the news being told is counted in, and
+        a duration mixed would move the breath along its own curve.
+
+        Args:
+            other: The flavour at all of the way.
+            share: How far along, from zero to one.
+
+        Returns:
+            The flavour that far along, lasting as long as the other.
+
+        """
+        return Flare(
+            duration=other.duration,
+            reach=lerp(self.reach, other.reach, share),
+            tumble=lerp(self.tumble, other.tumble, share),
+            hue=self.hue.lerp(other.hue, share),
+            plastic=lerp(self.plastic, other.plastic, share),
+            core=lerp(self.core, other.core, share),
+            glow=lerp(self.glow, other.glow, share),
+        )
+
+
+# An attempt that is over: the wide, warm one. It is the news a
 # session is made of, so it is given the room to be seen - the longest
 # breath here, the furthest reach, and the amber of something that has
 # just finished rather than something about to start.
@@ -216,41 +258,6 @@ SCRAMBLED_FLARE = Flare(
     glow=0.8,
 )
 
-# A case that came out: the wide, warm one of a training session. What
-# it announces is an attempt that is over and worth something, which
-# is the news a training session is made of exactly as the solve is
-# the news a timed one is made of - so it is given the same room to be
-# seen, and the violet is what says which of the two it is.
-TRAINED_FLARE = Flare(
-    duration=1.0,
-    reach=0.30,
-    tumble=0.42,
-    hue=TRAINED_HUE,
-    plastic=0.82,
-    core=0.9,
-    glow=1.0,
-)
-
-# A case that did not come out: the dull one. **What makes it dull is
-# the glow**, the lowest of the four, rather than merely the shortest
-# breath: the rim barely rises, so the cube gives a start instead of
-# lighting up. A failure is told, never announced - what it is worth
-# is the news that the attempt happened at all.
-#
-# Its reach and its tumble stay under everything else here for the
-# reason ``WAVEFRONT`` documents: the shells keep their order for any
-# reach at or under one, and a piece of news one regrets does not open
-# the cube.
-FAILED_FLARE = Flare(
-    duration=0.45,
-    reach=0.13,
-    tumble=0.16,
-    hue=FAILED_HUE,
-    plastic=0.55,
-    core=0.6,
-    glow=0.3,
-)
-
 # The word one side writes down and the other plays, and the two sides
 # are here together on purpose: a name spelled in the client and read
 # in the window is one word, and one word lives in one file. A name
@@ -259,8 +266,6 @@ FAILED_FLARE = Flare(
 FLARES: dict[str, Flare] = {
     SOLVED_WORD: SOLVED_FLARE,
     SCRAMBLED_WORD: SCRAMBLED_FLARE,
-    TRAINED_WORD: TRAINED_FLARE,
-    FAILED_WORD: FAILED_FLARE,
 }
 
 
@@ -423,6 +428,16 @@ class Burst:
     # the flavour being told.
     elapsed: float = 0.0
 
+    # What the cube looked like when the news being told took over
+    # from another one, and nothing at all the rest of the time. Held
+    # for the length of one attack from ``relayed``, the moment of the
+    # takeover counted on ``elapsed``: the flavour walks from this one
+    # to the one being told, so the cube is never seen to change its
+    # mind in one frame.
+    origin: Flare | None = None
+
+    relayed: float = 0.0
+
     @property
     def share(self) -> float:
         """
@@ -438,6 +453,46 @@ class Burst:
 
         return swell(self.elapsed / self.flare.duration)
 
+    @property
+    def relay(self) -> float:
+        """
+        Tell how far the news being told has taken over from the last.
+
+        Counted over one attack of the news being told, whatever height
+        it was picked up at: a breath taken over at its very peak has
+        no rise left, and the flavour still has all of its way to walk.
+
+        Returns:
+            How far along the takeover, all of it when there is none.
+
+        """
+        if self.flare is None or self.origin is None:
+            return 1.0
+
+        attack = self.flare.duration * ATTACK_SHARE
+
+        return smoothstep((self.elapsed - self.relayed) / attack)
+
+    @property
+    def flavour(self) -> Flare | None:
+        """
+        Tell what the cube looks like while it tells its news.
+
+        The flavour being told, the very same object, unless it is
+        still taking over from another one: then it is the mix of the
+        two, which is what spares a cube a jump in its reach, its
+        tumble and its color at the takeover.
+
+        Returns:
+            The flavour of the moment, nothing at all when there is no
+            news being told.
+
+        """
+        if self.flare is None or self.origin is None:
+            return self.flare
+
+        return self.origin.mingled(self.flare, self.relay)
+
     def fire(self, name: str) -> None:
         """
         Start telling the piece of news one word names.
@@ -446,8 +501,16 @@ class Burst:
         the empty one included, which is what a client does with a
         topic it does not know and what a window does with an order it
         does not know. A flare arriving over one already being told
-        starts over: the news is what matters, and two breaths
+        takes its place: the news is what matters, and two breaths
         overlapping would be a cube shivering rather than answering.
+
+        **It takes it over rather than starting from rest**, and that
+        is what a session told fast comes to - the reps of a drill are
+        a scramble and a stop each, a second apart or less. The new
+        breath is picked up on its own attack at the height the cube
+        stands at, and its flavour walks from the one the cube is in
+        over the length of that attack: started from zero, every piece
+        would snap back home in one frame and set out again.
 
         Args:
             name: What is being announced, empty for nothing at all.
@@ -458,8 +521,12 @@ class Burst:
         if flare is None:
             return
 
+        height = self.share
+
+        self.origin = self.flavour if height else None
         self.flare = flare
-        self.elapsed = 0.0
+        self.elapsed = flare.duration * ATTACK_SHARE * ascent(height)
+        self.relayed = self.elapsed
 
     def settle(self, delta: float) -> None:
         """
@@ -478,6 +545,9 @@ class Burst:
             return
 
         self.elapsed += max(delta, 0.0)
+
+        if self.relay >= 1.0:
+            self.origin = None
 
         if self.elapsed >= self.flare.duration:
             self.flare = None
@@ -506,7 +576,7 @@ class Burst:
             The cube, its pieces pushed and its plastic tinted.
 
         """
-        flare = self.flare
+        flare = self.flavour
         spread = self.share
 
         if flare is None or not spread:
@@ -549,10 +619,12 @@ class Burst:
             same object when there is none.
 
         """
-        if self.flare is None:
+        flare = self.flavour
+
+        if flare is None:
             return look
 
-        return look.blended(flared(look, self.flare), self.share)
+        return look.blended(flared(look, flare), self.share)
 
     def advance(self, scene: Scene, *, delta: float) -> Scene:
         """

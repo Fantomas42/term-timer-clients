@@ -3,8 +3,8 @@ The pieces of news a window tells, replayed over and over.
 
 Nothing else in ``publishers/`` publishes the session plane, and two
 publishers cannot bind the same endpoint: settling the breath a window
-blows on a cube that came back solved, and the one it blows on a
-scramble being laid, takes a script saying both planes at once. This
+blows on an attempt being over, and the one it blows on a scramble
+being laid, takes a script saying both planes at once. This
 is that publisher of its own.
 
 It rehearses no honest attempt - ``realistic_cube.py`` already does
@@ -20,20 +20,12 @@ with:
       session.state  scrambled            <- the cold breath
       session.state  inspecting, solving
       a few cube.move, putting it back together
-      cube.solved, session.state stop     <- the warm breath
+      session.state  stop                 <- the warm breath
 
-Under ``--train`` every envelope goes out as a training session
-publishes it, and the end of the cycle is the other half of what a
-window has to say:
-
-      cube.solved, session.state stop     <- nothing at all
-      session.train                       <- the violet, then the
-                                             crimson, and so on
-
-which is the whole of what that flag is for: the cube ends a drilled
-case solved whether or not the case came out, so ``cube.solved`` is a
-consequence there rather than a piece of news, and watching the window
-**not** answer it is watching the decision hold.
+Both breaths are values of ``session.state``, which is the whole of
+why this script exists: nothing of the cube plane says either, and
+``cube.solved`` is not published at all - a window reads nothing of
+it, and a bench publishing it would be settling nothing.
 
 It binds where term-timer binds, so a window opens on it with nothing
 typed either side:
@@ -44,8 +36,7 @@ typed either side:
 Every pause of the loop is an argument of its own, so each of the two
 breaths is watched for as long as it is being settled:
 
-    python publishers/flare_cube.py --solved 6 --scrambled 1
-    python publishers/flare_cube.py --train --trained 5
+    python publishers/flare_cube.py --stop 6 --scrambled 1
 
 Everything is published in the frame of the hardware, which is what a
 cube reports in: a window watching this with ``-o`` turns it back the
@@ -96,18 +87,13 @@ FACELETS_TOPIC = 'cube.facelets'
 
 MOVE_TOPIC = 'cube.move'
 
-SOLVED_TOPIC = 'cube.solved'
-
 STATE_TOPIC = 'session.state'
-
-TRAIN_TOPIC = 'session.train'
 
 # The states of a solve this loop walks through, in the order
 # term-timer publishes them. Only two of them are news to a window -
-# the scramble being laid, and the solve landing - and the others are
-# here because a state is read against the one before it: a window
-# honoring `cube.solved` whatever the session is doing would celebrate
-# the scramble as loudly as the solve.
+# the scramble being laid, and the attempt being over - and the others
+# are here because a state is published with the one before it, and a
+# window has to be seen staying quiet on them.
 SCRAMBLING_STATE = 'scrambling'
 
 SCRAMBLED_STATE = 'scrambled'
@@ -118,50 +104,22 @@ SOLVING_STATE = 'solving'
 
 STOP_STATE = 'stop'
 
-# What a session says it is, on every envelope it publishes, and the
-# whole of what tells a training apart from a timed solve: the two
-# walk through the very same states and end on the very same solved
-# cube, so it is the source of the envelope a window reads rather than
-# anything of the payload.
-SOLVE_SOURCE = 'solve'
-
-TRAIN_SOURCE = 'train'
-
-# What a training session says of the attempt that just ended, written
-# field for field as term-timer writes it. A window reads the `dnf`
-# and nothing else - the rest is what the training file keeps of the
-# attempt - but it is published whole all the same: a bench cut down
-# to the one field a client happens to read today says nothing the day
-# it reads another. The case names this loop rather than borrowing a
-# real one, the scramble being an argument: a bench announcing an OLL
-# it is not laying would be a bench lying about what it publishes.
-TRAIN_STEP = 'Rehearsal'
-
-TRAIN_FAMILY = 'Flare'
-
-TRAIN_CASE = 'FLARE'
-
-TRAIN_NAME = 'The breath of a trained case'
-
-TRAIN_RATING = 'Good'
-
-TRAIN_CARD_STATE = 'Review'
+# What a session says it is, on every envelope it publishes. A timed
+# solve, a training session ending on the very same `stop`.
+SOURCE = 'solve'
 
 HARDWARE_NAME = 'GANi3'
 
 BATTERY_LEVEL = 80
 
-# A cube counts its own milliseconds and term-timer times an attempt
-# in nanoseconds, a script counts in seconds.
+# A cube counts its own milliseconds, a script counts in seconds.
 MILLISECONDS = 1000.0
-
-NANOSECONDS = 1_000_000_000
 
 # What the cube is turned by while the scramble is being laid, written
 # the way the hands write it. The solve is its inverse, so the cube
-# truly comes back to the solved state it then reports - the window is
-# being settled on a solve landing, and a cube that announced one
-# without being solved would be settling it on a lie.
+# truly is solved when the `stop` arrives - the window is being
+# settled on a solve landing, and a cube left scrambled at the end of
+# it would be settling it on something else.
 SCRAMBLE = "R U R' U' F R2 U'"
 
 # What a window already waiting is given to finish subscribing, once
@@ -181,9 +139,7 @@ INSPECTING = 1.0
 
 PACE = 0.3
 
-SOLVED = 4.0
-
-TRAINED = 4.0
+STOP = 4.0
 
 
 @dataclass(frozen=True)
@@ -194,8 +150,7 @@ class Pauses:
     scrambled: float
     inspecting: float
     pace: float
-    solved: float
-    trained: float
+    stop: float
 
     @classmethod
     def from_options(cls, options: Namespace) -> Self:
@@ -214,8 +169,7 @@ class Pauses:
             scrambled=options.scrambled,
             inspecting=options.inspecting,
             pace=options.pace,
-            solved=options.solved,
-            trained=options.trained,
+            stop=options.stop,
         )
 
 
@@ -399,8 +353,7 @@ def build_parser(config: Config) -> ArgumentParser:
         epilog=(
             'Examples:\n'
             '  flare_cube.py\n'
-            '  flare_cube.py --solved 6 --scrambled 1\n'
-            '  flare_cube.py --train --trained 5\n'
+            '  flare_cube.py --stop 6 --scrambled 1\n'
             '  flare_cube.py -s "R U R2 F\' L" --pace 0.1\n'
         ),
     )
@@ -429,22 +382,10 @@ def build_parser(config: Config) -> ArgumentParser:
         metavar='SCRAMBLE',
         help=(
             'Lay this scramble on the cube, and solve it back with\n'
-            'its inverse: the cube truly is solved when it says so.\n'
+            'its inverse: the cube truly is solved at the stop.\n'
             f'Default: { SCRAMBLE }.'
         ),
     )
-    parser.add_argument(
-        '--train',
-        action='store_true',
-        help=(
-            'Publish as a training session rather than a timed one:\n'
-            'the cube still says it is solved and the window still\n'
-            'has to say nothing of it, the attempt being told by\n'
-            'session.train instead, failing every other cycle.\n'
-            'Default: a timed solve.'
-        ),
-    )
-
     pauses = parser.add_argument_group(
         'pauses',
         'What the loop waits, in seconds, at each of the moments of '
@@ -492,24 +433,13 @@ def build_parser(config: Config) -> ArgumentParser:
         ),
     )
     pauses.add_argument(
-        '--solved',
-        default=SOLVED,
+        '--stop',
+        default=STOP,
         type=parse_pause,
         metavar='SECONDS',
         help=(
-            'Watch the warm breath, the solve landing, or with\n'
-            '--train watch the window say nothing of it.\n'
-            f'Default: { SOLVED }.'
-        ),
-    )
-    pauses.add_argument(
-        '--trained',
-        default=TRAINED,
-        type=parse_pause,
-        metavar='SECONDS',
-        help=(
-            'Watch the breath of an attempt on a case, with --train.\n'
-            f'Default: { TRAINED }.'
+            'Watch the warm breath, the attempt being over.\n'
+            f'Default: { STOP }.'
         ),
     )
 
@@ -594,47 +524,6 @@ def play(publisher: Publisher, moves: Algorithm, serial: int,
     return serial
 
 
-def rehearse(
-        publisher: Publisher,
-        solve: Algorithm,
-        counter: int,
-        elapsed: float,
-        *,
-        dnf: bool,
-) -> None:
-    """
-    Publish the attempt on a case that just ended, landed or not.
-
-    Args:
-        publisher: What the messages are published by.
-        solve: What the case was executed with.
-        counter: Rank of the attempt in the session.
-        elapsed: How long the attempt took, in seconds.
-        dnf: Whether the attempt failed.
-
-    """
-    publisher.send(
-        TRAIN_TOPIC,
-        {
-            'step': TRAIN_STEP,
-            'family': TRAIN_FAMILY,
-            'case': TRAIN_CASE,
-            'name': TRAIN_NAME,
-            'algorithm': str(solve),
-            'time': round(elapsed * NANOSECONDS),
-            'dnf': dnf,
-            'counter': counter,
-            # A rating is what FSRS wrote down, and a failed attempt
-            # moves no card: the empty one is what term-timer sends
-            # there, and it is read by nothing in the window.
-            'rating': '' if dnf else TRAIN_RATING,
-            'free_play': False,
-            'state': TRAIN_CARD_STATE,
-            'due': None,
-        },
-    )
-
-
 def replay(
         publisher: Publisher,
         scramble: Algorithm,
@@ -647,8 +536,6 @@ def replay(
     for the reason the pauses are arguments: what a hue and a duration
     are settled against is the other one arriving a few seconds later,
     and two windows side by side would be settled against two cubes.
-    It is also what puts the two ends of a trained case next to each
-    other, the attempt failing every other turn.
 
     Args:
         publisher: What the messages are published by.
@@ -659,13 +546,6 @@ def replay(
     """
     solve = scramble.transform(invert_moves)
     serial = 1
-    counter = 0
-    dnf = False
-
-    # Read off the publisher rather than taken as an argument of its
-    # own: what a session says it is, it says on every envelope, and
-    # two spellings of it would disagree the day one is changed.
-    training = publisher.source == TRAIN_SOURCE
 
     connect(publisher, VCube(), serial)
 
@@ -692,46 +572,11 @@ def replay(
 
         print(f'Solving { len(solve) } moves back')
         publisher.announce(SOLVING_STATE)
-        started = time.monotonic()
         serial = play(publisher, solve, serial, pauses.pace)
-        elapsed = time.monotonic() - started
 
-        # The cube reports itself solved and term-timer stops the
-        # clock, and **nothing orders the two**: one crosses a
-        # bluetooth link and the other does not. They are published in
-        # this order here because it is the one a window has the least
-        # to go on - the state saying `solving` still when the news
-        # arrives - and it is exactly the order that has to work.
-        if training:
-            print(f'Nothing at all, watched for { pauses.solved }s')
-        else:
-            print(f'The warm breath, watched for { pauses.solved }s')
-
-        publisher.send(
-            SOLVED_TOPIC,
-            {'cube_timestamp': time.monotonic() * MILLISECONDS},
-        )
+        print(f'The warm breath, watched for { pauses.stop }s')
         publisher.announce(STOP_STATE)
-        time.sleep(pauses.solved)
-
-        if not training:
-            continue
-
-        # The cube said it was solved a moment ago and it truly is,
-        # which is exactly why the window has to say nothing of it
-        # here: a drilled case ends solved whether or not it came out,
-        # so what is news is the attempt and nothing else. The failure
-        # alternates from one turn to the next, the two ends of a case
-        # being settled against each other the way the two breaths of
-        # a solve already are.
-        counter += 1
-
-        print(f'The { "crimson" if dnf else "violet" } breath, '
-              f'watched for { pauses.trained }s')
-        rehearse(publisher, solve, counter, elapsed, dnf=dnf)
-        time.sleep(pauses.trained)
-
-        dnf = not dnf
+        time.sleep(pauses.stop)
 
 
 def main() -> int:
@@ -749,10 +594,9 @@ def main() -> int:
     options = build_parser(config).parse_args(sys.argv[1:])
 
     pauses = Pauses.from_options(options)
-    source = TRAIN_SOURCE if options.train else SOLVE_SOURCE
-    publisher = Publisher(options.endpoint, source)
+    publisher = Publisher(options.endpoint, SOURCE)
 
-    print(f'Publishing on { options.endpoint } as a { source } session')
+    print(f'Publishing on { options.endpoint } as a { SOURCE } session')
     print(f'Session { publisher.session }, watch it with: '
           f'{ watch_command(options, config) }')
     print(f'Scrambling with { options.scramble }')
